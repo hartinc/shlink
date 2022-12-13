@@ -19,7 +19,7 @@ return (static function (): array {
                 'host' => '[::]',
                 'port' => (int) EnvVars::PORT->loadFromEnv(8080),
                 'process-name' => 'shlink',
-
+                'protocol' => SWOOLE_SOCK_TCP6,
                 'options' => [
                     'worker_num' => (int) EnvVars::WEB_WORKER_NUM->loadFromEnv(16),
                     'task_worker_num' => max($taskWorkers, MIN_TASK_WORKERS),
