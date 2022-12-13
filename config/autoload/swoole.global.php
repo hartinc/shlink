@@ -16,7 +16,7 @@ return (static function (): array {
             'enable_coroutine' => false,
 
             'swoole-http-server' => [
-                'host' => '0.0.0.0',
+                'host' => '[::]',
                 'port' => (int) EnvVars::PORT->loadFromEnv(8080),
                 'process-name' => 'shlink',
 
