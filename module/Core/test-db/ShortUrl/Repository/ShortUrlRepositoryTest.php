@@ -5,29 +5,20 @@ declare(strict_types=1);
 namespace ShlinkioDbTest\Shlink\Core\ShortUrl\Repository;
 
 use Cake\Chronos\Chronos;
-use Doctrine\Common\Collections\ArrayCollection;
-use ReflectionObject;
-use Shlinkio\Shlink\Common\Util\DateRange;
+use PHPUnit\Framework\Attributes\Test;
 use Shlinkio\Shlink\Core\Domain\Entity\Domain;
-use Shlinkio\Shlink\Core\Model\Ordering;
 use Shlinkio\Shlink\Core\ShortUrl\Entity\ShortUrl;
 use Shlinkio\Shlink\Core\ShortUrl\Model\ShortUrlCreation;
 use Shlinkio\Shlink\Core\ShortUrl\Model\ShortUrlIdentifier;
-use Shlinkio\Shlink\Core\ShortUrl\Model\TagsMode;
-use Shlinkio\Shlink\Core\ShortUrl\Persistence\ShortUrlsCountFiltering;
-use Shlinkio\Shlink\Core\ShortUrl\Persistence\ShortUrlsListFiltering;
+use Shlinkio\Shlink\Core\ShortUrl\Model\ShortUrlMode;
 use Shlinkio\Shlink\Core\ShortUrl\Repository\ShortUrlRepository;
 use Shlinkio\Shlink\Core\ShortUrl\Resolver\PersistenceShortUrlRelationResolver;
-use Shlinkio\Shlink\Core\Visit\Entity\Visit;
-use Shlinkio\Shlink\Core\Visit\Model\Visitor;
 use Shlinkio\Shlink\Importer\Model\ImportedShlinkUrl;
 use Shlinkio\Shlink\Importer\Sources\ImportSource;
 use Shlinkio\Shlink\Rest\ApiKey\Model\ApiKeyMeta;
 use Shlinkio\Shlink\Rest\ApiKey\Model\RoleDefinition;
 use Shlinkio\Shlink\Rest\Entity\ApiKey;
 use Shlinkio\Shlink\TestUtils\DbTest\DatabaseTestCase;
-
-use function count;
 
 class ShortUrlRepositoryTest extends DatabaseTestCase
 {
@@ -40,19 +31,21 @@ class ShortUrlRepositoryTest extends DatabaseTestCase
         $this->relationResolver = new PersistenceShortUrlRelationResolver($this->getEntityManager());
     }
 
-    /** @test */
+    #[Test]
     public function findOneWithDomainFallbackReturnsProperData(): void
     {
-        $regularOne = ShortUrl::create(ShortUrlCreation::fromRawData(['customSlug' => 'foo', 'longUrl' => 'foo']));
+        $regularOne = ShortUrl::create(
+            ShortUrlCreation::fromRawData(['customSlug' => 'Foo', 'longUrl' => 'https://foo']),
+        );
         $this->getEntityManager()->persist($regularOne);
 
         $withDomain = ShortUrl::create(ShortUrlCreation::fromRawData(
-            ['domain' => 'example.com', 'customSlug' => 'domain-short-code', 'longUrl' => 'foo'],
+            ['domain' => 'example.com', 'customSlug' => 'domain-short-code', 'longUrl' => 'https://foo'],
         ));
         $this->getEntityManager()->persist($withDomain);
 
         $withDomainDuplicatingRegular = ShortUrl::create(ShortUrlCreation::fromRawData(
-            ['domain' => 'doma.in', 'customSlug' => 'foo', 'longUrl' => 'foo_with_domain'],
+            ['domain' => 's.test', 'customSlug' => 'Foo', 'longUrl' => 'https://foo_with_domain'],
         ));
         $this->getEntityManager()->persist($withDomainDuplicatingRegular);
 
@@ -60,351 +53,71 @@ class ShortUrlRepositoryTest extends DatabaseTestCase
 
         self::assertSame($regularOne, $this->repo->findOneWithDomainFallback(
             ShortUrlIdentifier::fromShortCodeAndDomain($regularOne->getShortCode()),
+            ShortUrlMode::STRICT,
+        ));
+        self::assertSame($regularOne, $this->repo->findOneWithDomainFallback(
+            ShortUrlIdentifier::fromShortCodeAndDomain('foo'),
+            ShortUrlMode::LOOSE,
+        ));
+        self::assertSame($regularOne, $this->repo->findOneWithDomainFallback(
+            ShortUrlIdentifier::fromShortCodeAndDomain('fOo'),
+            ShortUrlMode::LOOSE,
+        ));
+        self::assertNull($this->repo->findOneWithDomainFallback(
+            ShortUrlIdentifier::fromShortCodeAndDomain('foo'),
+            ShortUrlMode::STRICT,
         ));
         self::assertSame($regularOne, $this->repo->findOneWithDomainFallback(
             ShortUrlIdentifier::fromShortCodeAndDomain($withDomainDuplicatingRegular->getShortCode()),
+            ShortUrlMode::STRICT,
         ));
         self::assertSame($withDomain, $this->repo->findOneWithDomainFallback(
             ShortUrlIdentifier::fromShortCodeAndDomain($withDomain->getShortCode(), 'example.com'),
+            ShortUrlMode::STRICT,
         ));
         self::assertSame(
             $withDomainDuplicatingRegular,
             $this->repo->findOneWithDomainFallback(
-                ShortUrlIdentifier::fromShortCodeAndDomain($withDomainDuplicatingRegular->getShortCode(), 'doma.in'),
+                ShortUrlIdentifier::fromShortCodeAndDomain($withDomainDuplicatingRegular->getShortCode(), 's.test'),
+                ShortUrlMode::STRICT,
             ),
         );
         self::assertSame($regularOne, $this->repo->findOneWithDomainFallback(ShortUrlIdentifier::fromShortCodeAndDomain(
             $withDomainDuplicatingRegular->getShortCode(),
             'other-domain.com',
-        )));
-        self::assertNull($this->repo->findOneWithDomainFallback(ShortUrlIdentifier::fromShortCodeAndDomain('invalid')));
+        ), ShortUrlMode::STRICT));
+        self::assertNull($this->repo->findOneWithDomainFallback(
+            ShortUrlIdentifier::fromShortCodeAndDomain('invalid'),
+            ShortUrlMode::STRICT,
+        ));
         self::assertNull($this->repo->findOneWithDomainFallback(
             ShortUrlIdentifier::fromShortCodeAndDomain($withDomain->getShortCode()),
+            ShortUrlMode::STRICT,
         ));
         self::assertNull($this->repo->findOneWithDomainFallback(
             ShortUrlIdentifier::fromShortCodeAndDomain($withDomain->getShortCode(), 'other-domain.com'),
+            ShortUrlMode::STRICT,
         ));
     }
 
-    /** @test */
-    public function countListReturnsProperNumberOfResults(): void
-    {
-        $count = 5;
-        for ($i = 0; $i < $count; $i++) {
-            $this->getEntityManager()->persist(ShortUrl::withLongUrl((string) $i));
-        }
-        $this->getEntityManager()->flush();
-
-        self::assertEquals($count, $this->repo->countList(new ShortUrlsCountFiltering()));
-    }
-
-    /** @test */
-    public function findListProperlyFiltersResult(): void
-    {
-        $foo = ShortUrl::create(
-            ShortUrlCreation::fromRawData(['longUrl' => 'foo', 'tags' => ['bar']]),
-            $this->relationResolver,
-        );
-        $this->getEntityManager()->persist($foo);
-
-        $bar = ShortUrl::withLongUrl('bar');
-        $visit = Visit::forValidShortUrl($bar, Visitor::emptyInstance());
-        $this->getEntityManager()->persist($visit);
-        $bar->setVisits(new ArrayCollection([$visit]));
-        $this->getEntityManager()->persist($bar);
-
-        $foo2 = ShortUrl::withLongUrl('foo_2');
-        $ref = new ReflectionObject($foo2);
-        $dateProp = $ref->getProperty('dateCreated');
-        $dateProp->setAccessible(true);
-        $dateProp->setValue($foo2, Chronos::now()->subDays(5));
-        $this->getEntityManager()->persist($foo2);
-
-        $this->getEntityManager()->flush();
-
-        $result = $this->repo->findList(
-            new ShortUrlsListFiltering(null, null, Ordering::emptyInstance(), 'foo', ['bar']),
-        );
-        self::assertCount(1, $result);
-        self::assertEquals(1, $this->repo->countList(new ShortUrlsCountFiltering('foo', ['bar'])));
-        self::assertSame($foo, $result[0]);
-
-        // Assert searched text also applies to tags
-        $result = $this->repo->findList(new ShortUrlsListFiltering(null, null, Ordering::emptyInstance(), 'bar'));
-        self::assertCount(2, $result);
-        self::assertEquals(2, $this->repo->countList(new ShortUrlsCountFiltering('bar')));
-        self::assertContains($foo, $result);
-
-        $result = $this->repo->findList(new ShortUrlsListFiltering(null, null, Ordering::emptyInstance()));
-        self::assertCount(3, $result);
-
-        $result = $this->repo->findList(new ShortUrlsListFiltering(2, null, Ordering::emptyInstance()));
-        self::assertCount(2, $result);
-
-        $result = $this->repo->findList(new ShortUrlsListFiltering(2, 1, Ordering::emptyInstance()));
-        self::assertCount(2, $result);
-
-        self::assertCount(1, $this->repo->findList(new ShortUrlsListFiltering(2, 2, Ordering::emptyInstance())));
-
-        $result = $this->repo->findList(
-            new ShortUrlsListFiltering(null, null, Ordering::fromTuple(['visits', 'DESC'])),
-        );
-        self::assertCount(3, $result);
-        self::assertSame($bar, $result[0]);
-
-        $result = $this->repo->findList(
-            new ShortUrlsListFiltering(null, null, Ordering::emptyInstance(), null, [], null, DateRange::until(
-                Chronos::now()->subDays(2),
-            )),
-        );
-        self::assertCount(1, $result);
-        self::assertEquals(1, $this->repo->countList(new ShortUrlsCountFiltering(null, [], null, DateRange::until(
-            Chronos::now()->subDays(2),
-        ))));
-        self::assertSame($foo2, $result[0]);
-
-        self::assertCount(2, $this->repo->findList(
-            new ShortUrlsListFiltering(null, null, Ordering::emptyInstance(), null, [], null, DateRange::since(
-                Chronos::now()->subDays(2),
-            )),
-        ));
-        self::assertEquals(2, $this->repo->countList(
-            new ShortUrlsCountFiltering(null, [], null, DateRange::since(Chronos::now()->subDays(2))),
-        ));
-    }
-
-    /** @test */
-    public function findListProperlyMapsFieldNamesToColumnNamesWhenOrdering(): void
-    {
-        $urls = ['a', 'z', 'c', 'b'];
-        foreach ($urls as $url) {
-            $this->getEntityManager()->persist(ShortUrl::withLongUrl($url));
-        }
-
-        $this->getEntityManager()->flush();
-
-        $result = $this->repo->findList(
-            new ShortUrlsListFiltering(null, null, Ordering::fromTuple(['longUrl', 'ASC'])),
-        );
-
-        self::assertCount(count($urls), $result);
-        self::assertEquals('a', $result[0]->getLongUrl());
-        self::assertEquals('b', $result[1]->getLongUrl());
-        self::assertEquals('c', $result[2]->getLongUrl());
-        self::assertEquals('z', $result[3]->getLongUrl());
-    }
-
-    /** @test */
-    public function findListReturnsOnlyThoseWithMatchingTags(): void
-    {
-        $shortUrl1 = ShortUrl::create(ShortUrlCreation::fromRawData([
-            'longUrl' => 'foo1',
-            'tags' => ['foo', 'bar'],
-        ]), $this->relationResolver);
-        $this->getEntityManager()->persist($shortUrl1);
-        $shortUrl2 = ShortUrl::create(ShortUrlCreation::fromRawData([
-            'longUrl' => 'foo2',
-            'tags' => ['foo', 'baz'],
-        ]), $this->relationResolver);
-        $this->getEntityManager()->persist($shortUrl2);
-        $shortUrl3 = ShortUrl::create(ShortUrlCreation::fromRawData([
-            'longUrl' => 'foo3',
-            'tags' => ['foo'],
-        ]), $this->relationResolver);
-        $this->getEntityManager()->persist($shortUrl3);
-        $shortUrl4 = ShortUrl::create(ShortUrlCreation::fromRawData([
-            'longUrl' => 'foo4',
-            'tags' => ['bar', 'baz'],
-        ]), $this->relationResolver);
-        $this->getEntityManager()->persist($shortUrl4);
-        $shortUrl5 = ShortUrl::create(ShortUrlCreation::fromRawData([
-            'longUrl' => 'foo5',
-            'tags' => ['bar', 'baz'],
-        ]), $this->relationResolver);
-        $this->getEntityManager()->persist($shortUrl5);
-
-        $this->getEntityManager()->flush();
-
-        self::assertCount(5, $this->repo->findList(
-            new ShortUrlsListFiltering(null, null, Ordering::emptyInstance(), null, ['foo', 'bar']),
-        ));
-        self::assertCount(5, $this->repo->findList(new ShortUrlsListFiltering(
-            null,
-            null,
-            Ordering::emptyInstance(),
-            null,
-            ['foo', 'bar'],
-            TagsMode::ANY,
-        )));
-        self::assertCount(1, $this->repo->findList(new ShortUrlsListFiltering(
-            null,
-            null,
-            Ordering::emptyInstance(),
-            null,
-            ['foo', 'bar'],
-            TagsMode::ALL,
-        )));
-        self::assertEquals(5, $this->repo->countList(new ShortUrlsCountFiltering(null, ['foo', 'bar'])));
-        self::assertEquals(5, $this->repo->countList(new ShortUrlsCountFiltering(null, ['foo', 'bar'], TagsMode::ANY)));
-        self::assertEquals(1, $this->repo->countList(new ShortUrlsCountFiltering(null, ['foo', 'bar'], TagsMode::ALL)));
-
-        self::assertCount(4, $this->repo->findList(
-            new ShortUrlsListFiltering(null, null, Ordering::emptyInstance(), null, ['bar', 'baz']),
-        ));
-        self::assertCount(4, $this->repo->findList(new ShortUrlsListFiltering(
-            null,
-            null,
-            Ordering::emptyInstance(),
-            null,
-            ['bar', 'baz'],
-            TagsMode::ANY,
-        )));
-        self::assertCount(2, $this->repo->findList(new ShortUrlsListFiltering(
-            null,
-            null,
-            Ordering::emptyInstance(),
-            null,
-            ['bar', 'baz'],
-            TagsMode::ALL,
-        )));
-        self::assertEquals(4, $this->repo->countList(new ShortUrlsCountFiltering(null, ['bar', 'baz'])));
-        self::assertEquals(4, $this->repo->countList(
-            new ShortUrlsCountFiltering(null, ['bar', 'baz'], TagsMode::ANY),
-        ));
-        self::assertEquals(2, $this->repo->countList(
-            new ShortUrlsCountFiltering(null, ['bar', 'baz'], TagsMode::ALL),
-        ));
-
-        self::assertCount(5, $this->repo->findList(
-            new ShortUrlsListFiltering(null, null, Ordering::emptyInstance(), null, ['foo', 'bar', 'baz']),
-        ));
-        self::assertCount(5, $this->repo->findList(new ShortUrlsListFiltering(
-            null,
-            null,
-            Ordering::emptyInstance(),
-            null,
-            ['foo', 'bar', 'baz'],
-            TagsMode::ANY,
-        )));
-        self::assertCount(0, $this->repo->findList(new ShortUrlsListFiltering(
-            null,
-            null,
-            Ordering::emptyInstance(),
-            null,
-            ['foo', 'bar', 'baz'],
-            TagsMode::ALL,
-        )));
-        self::assertEquals(5, $this->repo->countList(new ShortUrlsCountFiltering(null, ['foo', 'bar', 'baz'])));
-        self::assertEquals(5, $this->repo->countList(
-            new ShortUrlsCountFiltering(null, ['foo', 'bar', 'baz'], TagsMode::ANY),
-        ));
-        self::assertEquals(0, $this->repo->countList(
-            new ShortUrlsCountFiltering(null, ['foo', 'bar', 'baz'], TagsMode::ALL),
-        ));
-    }
-
-    /** @test */
-    public function findListReturnsOnlyThoseWithMatchingDomains(): void
-    {
-        $shortUrl1 = ShortUrl::create(ShortUrlCreation::fromRawData([
-            'longUrl' => 'foo1',
-            'domain' => null,
-        ]), $this->relationResolver);
-        $this->getEntityManager()->persist($shortUrl1);
-        $shortUrl2 = ShortUrl::create(ShortUrlCreation::fromRawData([
-            'longUrl' => 'foo2',
-            'domain' => null,
-        ]), $this->relationResolver);
-        $this->getEntityManager()->persist($shortUrl2);
-        $shortUrl3 = ShortUrl::create(ShortUrlCreation::fromRawData([
-            'longUrl' => 'foo3',
-            'domain' => 'another.com',
-        ]), $this->relationResolver);
-        $this->getEntityManager()->persist($shortUrl3);
-
-        $this->getEntityManager()->flush();
-
-        $buildFiltering = static fn (string $searchTerm) => new ShortUrlsListFiltering(
-            null,
-            null,
-            Ordering::emptyInstance(),
-            searchTerm: $searchTerm,
-            defaultDomain: 'deFaulT-domain.com',
-        );
-
-        self::assertCount(2, $this->repo->findList($buildFiltering('default-dom')));
-        self::assertCount(2, $this->repo->findList($buildFiltering('DOM')));
-        self::assertCount(1, $this->repo->findList($buildFiltering('another')));
-        self::assertCount(3, $this->repo->findList($buildFiltering('foo')));
-        self::assertCount(0, $this->repo->findList($buildFiltering('no results')));
-    }
-
-    /** @test */
-    public function findListReturnsOnlyThoseWithoutExcludedUrls(): void
-    {
-        $shortUrl1 = ShortUrl::create(ShortUrlCreation::fromRawData([
-            'longUrl' => 'foo1',
-            'validUntil' => Chronos::now()->addDays(1)->toAtomString(),
-            'maxVisits' => 100,
-        ]), $this->relationResolver);
-        $this->getEntityManager()->persist($shortUrl1);
-        $shortUrl2 = ShortUrl::create(ShortUrlCreation::fromRawData([
-            'longUrl' => 'foo2',
-            'validUntil' => Chronos::now()->subDays(1)->toAtomString(),
-        ]), $this->relationResolver);
-        $this->getEntityManager()->persist($shortUrl2);
-        $shortUrl3 = ShortUrl::create(ShortUrlCreation::fromRawData([
-            'longUrl' => 'foo3',
-        ]), $this->relationResolver);
-        $this->getEntityManager()->persist($shortUrl3);
-        $shortUrl4 = ShortUrl::create(ShortUrlCreation::fromRawData([
-            'longUrl' => 'foo4',
-            'maxVisits' => 3,
-        ]), $this->relationResolver);
-        $this->getEntityManager()->persist($shortUrl4);
-        $this->getEntityManager()->persist(Visit::forValidShortUrl($shortUrl4, Visitor::emptyInstance()));
-        $this->getEntityManager()->persist(Visit::forValidShortUrl($shortUrl4, Visitor::emptyInstance()));
-        $this->getEntityManager()->persist(Visit::forValidShortUrl($shortUrl4, Visitor::emptyInstance()));
-
-        $this->getEntityManager()->flush();
-
-        $filtering = static fn (bool $excludeMaxVisitsReached, bool $excludePastValidUntil) =>
-            new ShortUrlsListFiltering(
-                null,
-                null,
-                Ordering::emptyInstance(),
-                excludeMaxVisitsReached: $excludeMaxVisitsReached,
-                excludePastValidUntil: $excludePastValidUntil,
-            );
-
-        self::assertCount(4, $this->repo->findList($filtering(false, false)));
-        self::assertEquals(4, $this->repo->countList($filtering(false, false)));
-        self::assertCount(3, $this->repo->findList($filtering(true, false)));
-        self::assertEquals(3, $this->repo->countList($filtering(true, false)));
-        self::assertCount(3, $this->repo->findList($filtering(false, true)));
-        self::assertEquals(3, $this->repo->countList($filtering(false, true)));
-        self::assertCount(2, $this->repo->findList($filtering(true, true)));
-        self::assertEquals(2, $this->repo->countList($filtering(true, true)));
-    }
-
-    /** @test */
+    #[Test]
     public function shortCodeIsInUseLooksForShortUrlInProperSetOfTables(): void
     {
         $shortUrlWithoutDomain = ShortUrl::create(
-            ShortUrlCreation::fromRawData(['customSlug' => 'my-cool-slug', 'longUrl' => 'foo']),
+            ShortUrlCreation::fromRawData(['customSlug' => 'my-cool-slug', 'longUrl' => 'https://foo']),
         );
         $this->getEntityManager()->persist($shortUrlWithoutDomain);
 
-        $shortUrlWithDomain = ShortUrl::create(
-            ShortUrlCreation::fromRawData(['domain' => 'doma.in', 'customSlug' => 'another-slug', 'longUrl' => 'foo']),
-        );
+        $shortUrlWithDomain = ShortUrl::create(ShortUrlCreation::fromRawData(
+            ['domain' => 's.test', 'customSlug' => 'another-slug', 'longUrl' => 'https://foo'],
+        ));
         $this->getEntityManager()->persist($shortUrlWithDomain);
 
         $this->getEntityManager()->flush();
 
         self::assertTrue($this->repo->shortCodeIsInUse(ShortUrlIdentifier::fromShortCodeAndDomain('my-cool-slug')));
         self::assertFalse($this->repo->shortCodeIsInUse(
-            ShortUrlIdentifier::fromShortCodeAndDomain('my-cool-slug', 'doma.in'),
+            ShortUrlIdentifier::fromShortCodeAndDomain('my-cool-slug', 's.test'),
         ));
         self::assertFalse($this->repo->shortCodeIsInUse(ShortUrlIdentifier::fromShortCodeAndDomain('slug-not-in-use')));
         self::assertFalse($this->repo->shortCodeIsInUse(ShortUrlIdentifier::fromShortCodeAndDomain('another-slug')));
@@ -412,102 +125,106 @@ class ShortUrlRepositoryTest extends DatabaseTestCase
             ShortUrlIdentifier::fromShortCodeAndDomain('another-slug', 'example.com'),
         ));
         self::assertTrue($this->repo->shortCodeIsInUse(
-            ShortUrlIdentifier::fromShortCodeAndDomain('another-slug', 'doma.in'),
+            ShortUrlIdentifier::fromShortCodeAndDomain('another-slug', 's.test'),
         ));
     }
 
-    /** @test */
+    #[Test]
     public function findOneLooksForShortUrlInProperSetOfTables(): void
     {
         $shortUrlWithoutDomain = ShortUrl::create(
-            ShortUrlCreation::fromRawData(['customSlug' => 'my-cool-slug', 'longUrl' => 'foo']),
+            ShortUrlCreation::fromRawData(['customSlug' => 'my-cool-slug', 'longUrl' => 'https://foo']),
         );
         $this->getEntityManager()->persist($shortUrlWithoutDomain);
 
-        $shortUrlWithDomain = ShortUrl::create(
-            ShortUrlCreation::fromRawData(['domain' => 'doma.in', 'customSlug' => 'another-slug', 'longUrl' => 'foo']),
-        );
+        $shortUrlWithDomain = ShortUrl::create(ShortUrlCreation::fromRawData(
+            ['domain' => 's.test', 'customSlug' => 'another-slug', 'longUrl' => 'https://foo'],
+        ));
         $this->getEntityManager()->persist($shortUrlWithDomain);
 
         $this->getEntityManager()->flush();
 
         self::assertNotNull($this->repo->findOne(ShortUrlIdentifier::fromShortCodeAndDomain('my-cool-slug')));
-        self::assertNull($this->repo->findOne(ShortUrlIdentifier::fromShortCodeAndDomain('my-cool-slug', 'doma.in')));
+        self::assertNull($this->repo->findOne(ShortUrlIdentifier::fromShortCodeAndDomain('my-cool-slug', 's.test')));
         self::assertNull($this->repo->findOne(ShortUrlIdentifier::fromShortCodeAndDomain('slug-not-in-use')));
         self::assertNull($this->repo->findOne(ShortUrlIdentifier::fromShortCodeAndDomain('another-slug')));
         self::assertNull($this->repo->findOne(
             ShortUrlIdentifier::fromShortCodeAndDomain('another-slug', 'example.com'),
         ));
         self::assertNotNull($this->repo->findOne(
-            ShortUrlIdentifier::fromShortCodeAndDomain('another-slug', 'doma.in'),
+            ShortUrlIdentifier::fromShortCodeAndDomain('another-slug', 's.test'),
         ));
     }
 
-    /** @test */
+    #[Test]
     public function findOneMatchingReturnsNullForNonExistingShortUrls(): void
     {
-        self::assertNull($this->repo->findOneMatching(ShortUrlCreation::createEmpty()));
-        self::assertNull($this->repo->findOneMatching(ShortUrlCreation::fromRawData(['longUrl' => 'foobar'])));
+        self::assertNull($this->repo->findOneMatching(ShortUrlCreation::fromRawData(['longUrl' => 'https://foobar'])));
         self::assertNull($this->repo->findOneMatching(
-            ShortUrlCreation::fromRawData(['longUrl' => 'foobar', 'tags' => ['foo', 'bar']]),
+            ShortUrlCreation::fromRawData(['longUrl' => 'https://foobar', 'tags' => ['foo', 'bar']]),
         ));
         self::assertNull($this->repo->findOneMatching(ShortUrlCreation::fromRawData([
             'validSince' => Chronos::parse('2020-03-05 20:18:30'),
             'customSlug' => 'this_slug_does_not_exist',
-            'longUrl' => 'foobar',
+            'longUrl' => 'https://foobar',
             'tags' => ['foo', 'bar'],
         ])));
     }
 
-    /** @test */
+    #[Test]
     public function findOneMatchingAppliesProperConditions(): void
     {
         $start = Chronos::parse('2020-03-05 20:18:30');
         $end = Chronos::parse('2021-03-05 20:18:30');
 
-        $shortUrl = ShortUrl::create(
-            ShortUrlCreation::fromRawData(['validSince' => $start, 'longUrl' => 'foo', 'tags' => ['foo', 'bar']]),
-            $this->relationResolver,
-        );
+        $shortUrl = ShortUrl::create(ShortUrlCreation::fromRawData(
+            ['validSince' => $start, 'longUrl' => 'https://foo', 'tags' => ['foo', 'bar']],
+        ), $this->relationResolver);
         $this->getEntityManager()->persist($shortUrl);
 
-        $shortUrl2 = ShortUrl::create(ShortUrlCreation::fromRawData(['validUntil' => $end, 'longUrl' => 'bar']));
+        $shortUrl2 = ShortUrl::create(
+            ShortUrlCreation::fromRawData(['validUntil' => $end, 'longUrl' => 'https://bar']),
+        );
         $this->getEntityManager()->persist($shortUrl2);
 
         $shortUrl3 = ShortUrl::create(
-            ShortUrlCreation::fromRawData(['validSince' => $start, 'validUntil' => $end, 'longUrl' => 'baz']),
+            ShortUrlCreation::fromRawData(['validSince' => $start, 'validUntil' => $end, 'longUrl' => 'https://baz']),
         );
         $this->getEntityManager()->persist($shortUrl3);
 
         $shortUrl4 = ShortUrl::create(
-            ShortUrlCreation::fromRawData(['customSlug' => 'custom', 'validUntil' => $end, 'longUrl' => 'foo']),
+            ShortUrlCreation::fromRawData(['customSlug' => 'custom', 'validUntil' => $end, 'longUrl' => 'https://foo']),
         );
         $this->getEntityManager()->persist($shortUrl4);
 
-        $shortUrl5 = ShortUrl::create(ShortUrlCreation::fromRawData(['maxVisits' => 3, 'longUrl' => 'foo']));
+        $shortUrl5 = ShortUrl::create(ShortUrlCreation::fromRawData(['maxVisits' => 3, 'longUrl' => 'https://foo']));
         $this->getEntityManager()->persist($shortUrl5);
 
-        $shortUrl6 = ShortUrl::create(ShortUrlCreation::fromRawData(['domain' => 'doma.in', 'longUrl' => 'foo']));
+        $shortUrl6 = ShortUrl::create(
+            ShortUrlCreation::fromRawData(['domain' => 's.test', 'longUrl' => 'https://foo']),
+        );
         $this->getEntityManager()->persist($shortUrl6);
 
         $this->getEntityManager()->flush();
 
         self::assertSame(
             $shortUrl,
-            $this->repo->findOneMatching(
-                ShortUrlCreation::fromRawData(['validSince' => $start, 'longUrl' => 'foo', 'tags' => ['foo', 'bar']]),
-            ),
+            $this->repo->findOneMatching(ShortUrlCreation::fromRawData(
+                ['validSince' => $start, 'longUrl' => 'https://foo', 'tags' => ['foo', 'bar']],
+            )),
         );
         self::assertSame(
             $shortUrl2,
-            $this->repo->findOneMatching(ShortUrlCreation::fromRawData(['validUntil' => $end, 'longUrl' => 'bar'])),
+            $this->repo->findOneMatching(
+                ShortUrlCreation::fromRawData(['validUntil' => $end, 'longUrl' => 'https://bar']),
+            ),
         );
         self::assertSame(
             $shortUrl3,
             $this->repo->findOneMatching(ShortUrlCreation::fromRawData([
                 'validSince' => $start,
                 'validUntil' => $end,
-                'longUrl' => 'baz',
+                'longUrl' => 'https://baz',
             ])),
         );
         self::assertSame(
@@ -515,26 +232,28 @@ class ShortUrlRepositoryTest extends DatabaseTestCase
             $this->repo->findOneMatching(ShortUrlCreation::fromRawData([
                 'customSlug' => 'custom',
                 'validUntil' => $end,
-                'longUrl' => 'foo',
+                'longUrl' => 'https://foo',
             ])),
         );
         self::assertSame(
             $shortUrl5,
-            $this->repo->findOneMatching(ShortUrlCreation::fromRawData(['maxVisits' => 3, 'longUrl' => 'foo'])),
+            $this->repo->findOneMatching(ShortUrlCreation::fromRawData(['maxVisits' => 3, 'longUrl' => 'https://foo'])),
         );
         self::assertSame(
             $shortUrl6,
-            $this->repo->findOneMatching(ShortUrlCreation::fromRawData(['domain' => 'doma.in', 'longUrl' => 'foo'])),
+            $this->repo->findOneMatching(
+                ShortUrlCreation::fromRawData(['domain' => 's.test', 'longUrl' => 'https://foo']),
+            ),
         );
     }
 
-    /** @test */
+    #[Test]
     public function findOneMatchingReturnsOldestOneWhenThereAreMultipleMatches(): void
     {
         $start = Chronos::parse('2020-03-05 20:18:30');
         $tags = ['foo', 'bar'];
         $meta = ShortUrlCreation::fromRawData(
-            ['validSince' => $start, 'maxVisits' => 50, 'longUrl' => 'foo', 'tags' => $tags],
+            ['validSince' => $start, 'maxVisits' => 50, 'longUrl' => 'https://foo', 'tags' => $tags],
         );
 
         $shortUrl1 = ShortUrl::create($meta, $this->relationResolver);
@@ -556,7 +275,7 @@ class ShortUrlRepositoryTest extends DatabaseTestCase
         self::assertNotSame($shortUrl3, $result);
     }
 
-    /** @test */
+    #[Test]
     public function findOneMatchingAppliesProvidedApiKeyConditions(): void
     {
         $start = Chronos::parse('2020-03-05 20:18:30');
@@ -582,15 +301,15 @@ class ShortUrlRepositoryTest extends DatabaseTestCase
         $shortUrl = ShortUrl::create(ShortUrlCreation::fromRawData([
             'validSince' => $start,
             'apiKey' => $apiKey,
-            'domain' => $rightDomain->getAuthority(),
-            'longUrl' => 'foo',
+            'domain' => $rightDomain->authority,
+            'longUrl' => 'https://foo',
             'tags' => ['foo', 'bar'],
         ]), $this->relationResolver);
         $this->getEntityManager()->persist($shortUrl);
 
         $nonDomainShortUrl = ShortUrl::create(ShortUrlCreation::fromRawData([
             'apiKey' => $apiKey,
-            'longUrl' => 'non-domain',
+            'longUrl' => 'https://non-domain',
         ]), $this->relationResolver);
         $this->getEntityManager()->persist($nonDomainShortUrl);
 
@@ -598,26 +317,26 @@ class ShortUrlRepositoryTest extends DatabaseTestCase
 
         self::assertSame(
             $shortUrl,
-            $this->repo->findOneMatching(
-                ShortUrlCreation::fromRawData(['validSince' => $start, 'longUrl' => 'foo', 'tags' => ['foo', 'bar']]),
-            ),
+            $this->repo->findOneMatching(ShortUrlCreation::fromRawData(
+                ['validSince' => $start, 'longUrl' => 'https://foo', 'tags' => ['foo', 'bar']],
+            )),
         );
         self::assertSame($shortUrl, $this->repo->findOneMatching(ShortUrlCreation::fromRawData([
             'validSince' => $start,
             'apiKey' => $apiKey,
-            'longUrl' => 'foo',
+            'longUrl' => 'https://foo',
             'tags' => ['foo', 'bar'],
         ])));
         self::assertSame($shortUrl, $this->repo->findOneMatching(ShortUrlCreation::fromRawData([
             'validSince' => $start,
             'apiKey' => $adminApiKey,
-            'longUrl' => 'foo',
+            'longUrl' => 'https://foo',
             'tags' => ['foo', 'bar'],
         ])));
         self::assertNull($this->repo->findOneMatching(ShortUrlCreation::fromRawData([
             'validSince' => $start,
             'apiKey' => $otherApiKey,
-            'longUrl' => 'foo',
+            'longUrl' => 'https://foo',
             'tags' => ['foo', 'bar'],
         ])));
 
@@ -625,8 +344,8 @@ class ShortUrlRepositoryTest extends DatabaseTestCase
             $shortUrl,
             $this->repo->findOneMatching(ShortUrlCreation::fromRawData([
                 'validSince' => $start,
-                'domain' => $rightDomain->getAuthority(),
-                'longUrl' => 'foo',
+                'domain' => $rightDomain->authority,
+                'longUrl' => 'https://foo',
                 'tags' => ['foo', 'bar'],
             ])),
         );
@@ -634,9 +353,9 @@ class ShortUrlRepositoryTest extends DatabaseTestCase
             $shortUrl,
             $this->repo->findOneMatching(ShortUrlCreation::fromRawData([
                 'validSince' => $start,
-                'domain' => $rightDomain->getAuthority(),
+                'domain' => $rightDomain->authority,
                 'apiKey' => $rightDomainApiKey,
-                'longUrl' => 'foo',
+                'longUrl' => 'https://foo',
                 'tags' => ['foo', 'bar'],
             ])),
         );
@@ -644,18 +363,18 @@ class ShortUrlRepositoryTest extends DatabaseTestCase
             $shortUrl,
             $this->repo->findOneMatching(ShortUrlCreation::fromRawData([
                 'validSince' => $start,
-                'domain' => $rightDomain->getAuthority(),
+                'domain' => $rightDomain->authority,
                 'apiKey' => $apiKey,
-                'longUrl' => 'foo',
+                'longUrl' => 'https://foo',
                 'tags' => ['foo', 'bar'],
             ])),
         );
         self::assertNull(
             $this->repo->findOneMatching(ShortUrlCreation::fromRawData([
                 'validSince' => $start,
-                'domain' => $rightDomain->getAuthority(),
+                'domain' => $rightDomain->authority,
                 'apiKey' => $wrongDomainApiKey,
-                'longUrl' => 'foo',
+                'longUrl' => 'https://foo',
                 'tags' => ['foo', 'bar'],
             ])),
         );
@@ -664,76 +383,43 @@ class ShortUrlRepositoryTest extends DatabaseTestCase
             $nonDomainShortUrl,
             $this->repo->findOneMatching(ShortUrlCreation::fromRawData([
                 'apiKey' => $apiKey,
-                'longUrl' => 'non-domain',
+                'longUrl' => 'https://non-domain',
             ])),
         );
         self::assertSame(
             $nonDomainShortUrl,
             $this->repo->findOneMatching(ShortUrlCreation::fromRawData([
                 'apiKey' => $adminApiKey,
-                'longUrl' => 'non-domain',
+                'longUrl' => 'https://non-domain',
             ])),
         );
         self::assertNull(
             $this->repo->findOneMatching(ShortUrlCreation::fromRawData([
                 'apiKey' => $otherApiKey,
-                'longUrl' => 'non-domain',
+                'longUrl' => 'https://non-domain',
             ])),
         );
     }
 
-    /** @test */
+    #[Test]
     public function importedShortUrlsAreFoundWhenExpected(): void
     {
-        $buildImported = static fn (string $shortCode, ?String $domain = null) =>
-            new ImportedShlinkUrl(ImportSource::BITLY, 'foo', [], Chronos::now(), $domain, $shortCode, null);
+        $buildImported = static fn (string $shortCode, string|null $domain = null) =>
+            new ImportedShlinkUrl(ImportSource::BITLY, 'https://foo', [], Chronos::now(), $domain, $shortCode, null);
 
         $shortUrlWithoutDomain = ShortUrl::fromImport($buildImported('my-cool-slug'), true);
         $this->getEntityManager()->persist($shortUrlWithoutDomain);
 
-        $shortUrlWithDomain = ShortUrl::fromImport($buildImported('another-slug', 'doma.in'), true);
+        $shortUrlWithDomain = ShortUrl::fromImport($buildImported('another-slug', 's.test'), true);
         $this->getEntityManager()->persist($shortUrlWithDomain);
 
         $this->getEntityManager()->flush();
 
         self::assertNotNull($this->repo->findOneByImportedUrl($buildImported('my-cool-slug')));
-        self::assertNotNull($this->repo->findOneByImportedUrl($buildImported('another-slug', 'doma.in')));
+        self::assertNotNull($this->repo->findOneByImportedUrl($buildImported('another-slug', 's.test')));
         self::assertNull($this->repo->findOneByImportedUrl($buildImported('non-existing-slug')));
-        self::assertNull($this->repo->findOneByImportedUrl($buildImported('non-existing-slug', 'doma.in')));
-        self::assertNull($this->repo->findOneByImportedUrl($buildImported('my-cool-slug', 'doma.in')));
+        self::assertNull($this->repo->findOneByImportedUrl($buildImported('non-existing-slug', 's.test')));
+        self::assertNull($this->repo->findOneByImportedUrl($buildImported('my-cool-slug', 's.test')));
         self::assertNull($this->repo->findOneByImportedUrl($buildImported('another-slug')));
-    }
-
-    /** @test */
-    public function findCrawlableShortCodesReturnsExpectedResult(): void
-    {
-        $createShortUrl = fn (bool $crawlable) => ShortUrl::create(
-            ShortUrlCreation::fromRawData(['crawlable' => $crawlable, 'longUrl' => 'foo.com']),
-        );
-
-        $shortUrl1 = $createShortUrl(true);
-        $this->getEntityManager()->persist($shortUrl1);
-        $shortUrl2 = $createShortUrl(false);
-        $this->getEntityManager()->persist($shortUrl2);
-        $shortUrl3 = $createShortUrl(true);
-        $this->getEntityManager()->persist($shortUrl3);
-        $shortUrl4 = $createShortUrl(true);
-        $this->getEntityManager()->persist($shortUrl4);
-        $shortUrl5 = $createShortUrl(false);
-        $this->getEntityManager()->persist($shortUrl5);
-        $this->getEntityManager()->flush();
-
-        $iterable = $this->repo->findCrawlableShortCodes();
-        $results = [];
-        foreach ($iterable as $shortCode) {
-            $results[] = $shortCode;
-        }
-
-        self::assertCount(3, $results);
-        self::assertContains($shortUrl1->getShortCode(), $results);
-        self::assertContains($shortUrl3->getShortCode(), $results);
-        self::assertContains($shortUrl4->getShortCode(), $results);
-        self::assertNotContains($shortUrl2->getShortCode(), $results);
-        self::assertNotContains($shortUrl5->getShortCode(), $results);
     }
 }

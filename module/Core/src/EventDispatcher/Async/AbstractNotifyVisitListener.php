@@ -8,12 +8,12 @@ use Doctrine\ORM\EntityManagerInterface;
 use Psr\Log\LoggerInterface;
 use Shlinkio\Shlink\Common\UpdatePublishing\PublishingHelperInterface;
 use Shlinkio\Shlink\Common\UpdatePublishing\Update;
-use Shlinkio\Shlink\Core\EventDispatcher\Event\VisitLocated;
+use Shlinkio\Shlink\Core\EventDispatcher\Event\UrlVisited;
 use Shlinkio\Shlink\Core\EventDispatcher\PublishingUpdatesGeneratorInterface;
 use Shlinkio\Shlink\Core\Visit\Entity\Visit;
 use Throwable;
 
-use function Functional\each;
+use function array_walk;
 
 abstract class AbstractNotifyVisitListener extends AbstractAsyncListener
 {
@@ -25,7 +25,7 @@ abstract class AbstractNotifyVisitListener extends AbstractAsyncListener
     ) {
     }
 
-    public function __invoke(VisitLocated $visitLocated): void
+    public function __invoke(UrlVisited $visitLocated): void
     {
         if (! $this->isEnabled()) {
             return;
@@ -46,7 +46,7 @@ abstract class AbstractNotifyVisitListener extends AbstractAsyncListener
         $updates = $this->determineUpdatesForVisit($visit);
 
         try {
-            each($updates, fn (Update $update) => $this->publishingHelper->publishUpdate($update));
+            array_walk($updates, fn (Update $update) => $this->publishingHelper->publishUpdate($update));
         } catch (Throwable $e) {
             $this->logger->debug(
                 'Error while trying to notify {name} with new visit. {e}',

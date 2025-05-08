@@ -4,118 +4,148 @@ declare(strict_types=1);
 
 namespace Shlinkio\Shlink\Core\ShortUrl\Model\Validation;
 
-use DateTime;
+use DateTimeInterface;
 use Laminas\Filter;
-use Laminas\InputFilter\Input;
 use Laminas\InputFilter\InputFilter;
 use Laminas\Validator;
-use Shlinkio\Shlink\Common\Validation;
-use Shlinkio\Shlink\Core\Config\EnvVars;
+use Shlinkio\Shlink\Common\Validation\HostAndPortValidator;
+use Shlinkio\Shlink\Common\Validation\InputFactory;
+use Shlinkio\Shlink\Core\Config\Options\UrlShortenerOptions;
 use Shlinkio\Shlink\Rest\Entity\ApiKey;
 
 use function is_string;
-use function str_replace;
+use function preg_match;
 use function substr;
-use function trim;
 
+use const Shlinkio\Shlink\LOOSE_URI_MATCHER;
 use const Shlinkio\Shlink\MIN_SHORT_CODES_LENGTH;
 
+/** @extends InputFilter<mixed> */
 class ShortUrlInputFilter extends InputFilter
 {
-    use Validation\InputFactoryTrait;
+    // Fields for creation only
+    public const string SHORT_CODE_LENGTH = 'shortCodeLength';
+    public const string CUSTOM_SLUG = 'customSlug';
+    public const string PATH_PREFIX = 'pathPrefix';
+    public const string FIND_IF_EXISTS = 'findIfExists';
+    public const string DOMAIN = 'domain';
 
-    public const VALID_SINCE = 'validSince';
-    public const VALID_UNTIL = 'validUntil';
-    public const CUSTOM_SLUG = 'customSlug';
-    public const MAX_VISITS = 'maxVisits';
-    public const FIND_IF_EXISTS = 'findIfExists';
-    public const DOMAIN = 'domain';
-    public const SHORT_CODE_LENGTH = 'shortCodeLength';
-    public const LONG_URL = 'longUrl';
-    public const VALIDATE_URL = 'validateUrl';
-    public const API_KEY = 'apiKey';
-    public const TAGS = 'tags';
-    public const TITLE = 'title';
-    public const CRAWLABLE = 'crawlable';
-    public const FORWARD_QUERY = 'forwardQuery';
+    // Fields for creation and edition
+    public const string LONG_URL = 'longUrl';
+    public const string VALID_SINCE = 'validSince';
+    public const string VALID_UNTIL = 'validUntil';
+    public const string MAX_VISITS = 'maxVisits';
+    public const string TITLE = 'title';
+    public const string TAGS = 'tags';
+    public const string CRAWLABLE = 'crawlable';
+    public const string FORWARD_QUERY = 'forwardQuery';
+    public const string API_KEY = 'apiKey';
 
-    private function __construct(array $data, bool $requireLongUrl)
+    public static function forCreation(array $data, UrlShortenerOptions $options): self
     {
-        $this->initialize($requireLongUrl, $data[EnvVars::MULTI_SEGMENT_SLUGS_ENABLED->value] ?? false);
-        $this->setData($data);
+        $instance = new self();
+        $instance->initializeForCreation($options);
+        $instance->setData($data);
+
+        return $instance;
     }
 
-    public static function withRequiredLongUrl(array $data): self
+    public static function forEdition(array $data): self
     {
-        return new self($data, true);
+        $instance = new self();
+        $instance->initializeForEdition();
+        $instance->setData($data);
+
+        return $instance;
     }
 
-    public static function withNonRequiredLongUrl(array $data): self
+    private function initializeForCreation(UrlShortenerOptions $options): void
     {
-        return new self($data, false);
-    }
-
-    private function initialize(bool $requireLongUrl, bool $multiSegmentEnabled): void
-    {
-        $longUrlInput = $this->createInput(self::LONG_URL, $requireLongUrl);
-        $longUrlInput->getValidatorChain()->attach(new Validator\NotEmpty([
-            Validator\NotEmpty::OBJECT,
-            Validator\NotEmpty::SPACE,
-            Validator\NotEmpty::NULL,
-            Validator\NotEmpty::EMPTY_ARRAY,
-            Validator\NotEmpty::BOOLEAN,
-        ]));
-        $this->add($longUrlInput);
-
-        $validSince = $this->createInput(self::VALID_SINCE, false);
-        $validSince->getValidatorChain()->attach(new Validator\Date(['format' => DateTime::ATOM]));
-        $this->add($validSince);
-
-        $validUntil = $this->createInput(self::VALID_UNTIL, false);
-        $validUntil->getValidatorChain()->attach(new Validator\Date(['format' => DateTime::ATOM]));
-        $this->add($validUntil);
-
-        // FIXME The only way to enforce the NotEmpty validator to be evaluated when the value is provided but it's
-        //       empty, is by using the deprecated setContinueIfEmpty
-        $customSlug = $this->createInput(self::CUSTOM_SLUG, false)->setContinueIfEmpty(true);
-        $customSlug->getFilterChain()->attach(new Filter\Callback(match ($multiSegmentEnabled) {
-            true => static fn (mixed $v) => is_string($v) ? trim(str_replace(' ', '-', $v), '/') : $v,
-            false => static fn (mixed $v) => is_string($v) ? str_replace([' ', '/'], '-', $v) : $v,
-        }));
-        $customSlug->getValidatorChain()->attach(new Validator\NotEmpty([
-            Validator\NotEmpty::STRING,
-            Validator\NotEmpty::SPACE,
-        ]));
+        // The only way to enforce the NotEmpty validator to be evaluated when the key is present with an empty value
+        // is with setContinueIfEmpty(true)
+        $customSlug = InputFactory::basic(self::CUSTOM_SLUG)->setContinueIfEmpty(true);
+        $customSlug->getFilterChain()->attach(new CustomSlugFilter($options));
+        $customSlug->getValidatorChain()
+            ->attach(new Validator\NotEmpty([
+                Validator\NotEmpty::STRING,
+                Validator\NotEmpty::SPACE,
+            ]))
+            ->attach(CustomSlugValidator::forUrlShortenerOptions($options));
         $this->add($customSlug);
 
-        $this->add($this->createNumericInput(self::MAX_VISITS, false));
-        $this->add($this->createNumericInput(self::SHORT_CODE_LENGTH, false, MIN_SHORT_CODES_LENGTH));
+        // The path prefix is subject to the same filtering and validation logic as the custom slug, which takes into
+        // consideration if multi-segment slugs are enabled or not.
+        // The only difference is that empty values are allowed here.
+        $pathPrefix = InputFactory::basic(self::PATH_PREFIX);
+        $pathPrefix->getFilterChain()->attach(new CustomSlugFilter($options));
+        $pathPrefix->getValidatorChain()->attach(CustomSlugValidator::forUrlShortenerOptions($options));
+        $this->add($pathPrefix);
 
-        $this->add($this->createBooleanInput(self::FIND_IF_EXISTS, false));
+        $this->add(InputFactory::numeric(self::SHORT_CODE_LENGTH, min: MIN_SHORT_CODES_LENGTH));
+        $this->add(InputFactory::boolean(self::FIND_IF_EXISTS));
 
-        // These cannot be defined as a boolean inputs, because they can actually have 3 values: true, false and null.
-        // Defining them as boolean will make null fall back to false, which is not the desired behavior.
-        $this->add($this->createInput(self::VALIDATE_URL, false));
-        $this->add($this->createInput(self::FORWARD_QUERY, false));
-
-        $domain = $this->createInput(self::DOMAIN, false);
-        $domain->getValidatorChain()->attach(new Validation\HostAndPortValidator());
+        $domain = InputFactory::basic(self::DOMAIN);
+        $domain->getValidatorChain()->attach(new HostAndPortValidator());
         $this->add($domain);
 
-        $apiKeyInput = new Input(self::API_KEY);
-        $apiKeyInput
-            ->setRequired(false)
-            ->getValidatorChain()->attach(new Validator\IsInstanceOf(['className' => ApiKey::class]));
-        $this->add($apiKeyInput);
+        $this->initializeForEdition(requireLongUrl: true);
+    }
 
-        $this->add($this->createTagsInput(self::TAGS, false));
+    private function initializeForEdition(bool $requireLongUrl = false): void
+    {
+        $longUrlInput = InputFactory::basic(self::LONG_URL, required: $requireLongUrl);
+        $longUrlInput->getValidatorChain()->merge(self::longUrlValidators(allowNull: ! $requireLongUrl));
+        $this->add($longUrlInput);
 
-        $title = $this->createInput(self::TITLE, false);
+        $validSince = InputFactory::basic(self::VALID_SINCE);
+        $validSince->getValidatorChain()->attach(new Validator\Date(['format' => DateTimeInterface::ATOM]));
+        $this->add($validSince);
+
+        $validUntil = InputFactory::basic(self::VALID_UNTIL);
+        $validUntil->getValidatorChain()->attach(new Validator\Date(['format' => DateTimeInterface::ATOM]));
+        $this->add($validUntil);
+
+        $this->add(InputFactory::numeric(self::MAX_VISITS));
+
+        $title = InputFactory::basic(self::TITLE);
         $title->getFilterChain()->attach(new Filter\Callback(
-            static fn (?string $value) => $value === null ? $value : substr($value, 0, 512),
+            static fn (string|null $value) => $value === null ? $value : substr($value, 0, 512),
         ));
         $this->add($title);
 
-        $this->add($this->createBooleanInput(self::CRAWLABLE, false));
+        $this->add(InputFactory::tags(self::TAGS));
+        $this->add(InputFactory::boolean(self::CRAWLABLE));
+
+        // This cannot be defined as a boolean inputs, because it can actually have 3 values: true, false and null.
+        // Defining them as boolean will make null fall back to false, which is not the desired behavior.
+        $this->add(InputFactory::basic(self::FORWARD_QUERY));
+
+        $apiKeyInput = InputFactory::basic(self::API_KEY);
+        $apiKeyInput->getValidatorChain()->attach(new Validator\IsInstanceOf(['className' => ApiKey::class]));
+        $this->add($apiKeyInput);
+    }
+
+    /**
+     * @todo Extract to its own validator class
+     */
+    public static function longUrlValidators(bool $allowNull = false): Validator\ValidatorChain
+    {
+        $emptyModifiers = [
+            Validator\NotEmpty::OBJECT,
+            Validator\NotEmpty::SPACE,
+            Validator\NotEmpty::EMPTY_ARRAY,
+            Validator\NotEmpty::BOOLEAN,
+            Validator\NotEmpty::STRING,
+        ];
+        if (! $allowNull) {
+            $emptyModifiers[] = Validator\NotEmpty::NULL;
+        }
+
+        return (new Validator\ValidatorChain())
+            ->attach(new Validator\NotEmpty($emptyModifiers))
+            ->attach(new Validator\Callback(
+                // Non-strings is always allowed. Other validators will take care of those
+                static fn (mixed $value) => ! is_string($value) || preg_match(LOOSE_URI_MATCHER, $value) === 1,
+            ));
     }
 }

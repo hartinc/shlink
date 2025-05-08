@@ -4,6 +4,9 @@ declare(strict_types=1);
 
 namespace ShlinkioTest\Shlink\Core\EventDispatcher;
 
+use Cake\Chronos\Chronos;
+use PHPUnit\Framework\Attributes\DataProvider;
+use PHPUnit\Framework\Attributes\Test;
 use PHPUnit\Framework\TestCase;
 use Shlinkio\Shlink\Common\UpdatePublishing\Update;
 use Shlinkio\Shlink\Core\EventDispatcher\PublishingUpdatesGenerator;
@@ -14,33 +17,38 @@ use Shlinkio\Shlink\Core\ShortUrl\Model\ShortUrlCreation;
 use Shlinkio\Shlink\Core\ShortUrl\Transformer\ShortUrlDataTransformer;
 use Shlinkio\Shlink\Core\Visit\Entity\Visit;
 use Shlinkio\Shlink\Core\Visit\Model\Visitor;
+use Shlinkio\Shlink\Core\Visit\Model\VisitsSummary;
 use Shlinkio\Shlink\Core\Visit\Model\VisitType;
-use Shlinkio\Shlink\Core\Visit\Transformer\OrphanVisitDataTransformer;
 
 class PublishingUpdatesGeneratorTest extends TestCase
 {
     private PublishingUpdatesGenerator $generator;
+    private Chronos $now;
 
     protected function setUp(): void
     {
+        $this->now = Chronos::now();
+        Chronos::setTestNow($this->now);
+
         $this->generator = new PublishingUpdatesGenerator(
-            new ShortUrlDataTransformer(new ShortUrlStringifier([])),
-            new OrphanVisitDataTransformer(),
+            new ShortUrlDataTransformer(new ShortUrlStringifier()),
         );
     }
 
-    /**
-     * @test
-     * @dataProvider provideMethod
-     */
-    public function visitIsProperlySerializedIntoUpdate(string $method, string $expectedTopic, ?string $title): void
+    protected function tearDown(): void
+    {
+        Chronos::setTestNow();
+    }
+
+    #[Test, DataProvider('provideMethod')]
+    public function visitIsProperlySerializedIntoUpdate(string $method, string $expectedTopic, string|null $title): void
     {
         $shortUrl = ShortUrl::create(ShortUrlCreation::fromRawData([
             'customSlug' => 'foo',
-            'longUrl' => '',
+            'longUrl' => 'https://longUrl',
             'title' => $title,
         ]));
-        $visit = Visit::forValidShortUrl($shortUrl, Visitor::emptyInstance());
+        $visit = Visit::forValidShortUrl($shortUrl, Visitor::empty());
 
         /** @var Update $update */
         $update = $this->generator->{$method}($visit);
@@ -50,9 +58,8 @@ class PublishingUpdatesGeneratorTest extends TestCase
             'shortUrl' => [
                 'shortCode' => $shortUrl->getShortCode(),
                 'shortUrl' => 'http:/' . $shortUrl->getShortCode(),
-                'longUrl' => '',
-                'dateCreated' => $shortUrl->getDateCreated()->toAtomString(),
-                'visitsCount' => 0,
+                'longUrl' => 'https://longUrl',
+                'dateCreated' => $this->now->toAtomString(),
                 'tags' => [],
                 'meta' => [
                     'validSince' => null,
@@ -63,27 +70,28 @@ class PublishingUpdatesGeneratorTest extends TestCase
                 'title' => $title,
                 'crawlable' => false,
                 'forwardQuery' => true,
+                'visitsSummary' => VisitsSummary::fromTotalAndNonBots(0, 0),
+                'hasRedirectRules' => false,
             ],
             'visit' => [
                 'referer' => '',
                 'userAgent' => '',
                 'visitLocation' => null,
-                'date' => $visit->getDate()->toAtomString(),
+                'date' => $visit->date->toAtomString(),
                 'potentialBot' => false,
+                'visitedUrl' => '',
+                'redirectUrl' => null,
             ],
         ], $update->payload);
     }
 
-    public function provideMethod(): iterable
+    public static function provideMethod(): iterable
     {
         yield 'newVisitUpdate' => ['newVisitUpdate', 'https://shlink.io/new-visit', 'the cool title'];
         yield 'newShortUrlVisitUpdate' => ['newShortUrlVisitUpdate', 'https://shlink.io/new-visit/foo', null];
     }
 
-    /**
-     * @test
-     * @dataProvider provideOrphanVisits
-     */
+    #[Test, DataProvider('provideOrphanVisits')]
     public function orphanVisitIsProperlySerializedIntoUpdate(Visit $orphanVisit): void
     {
         $update = $this->generator->newOrphanVisitUpdate($orphanVisit);
@@ -94,29 +102,30 @@ class PublishingUpdatesGeneratorTest extends TestCase
                 'referer' => '',
                 'userAgent' => '',
                 'visitLocation' => null,
-                'date' => $orphanVisit->getDate()->toAtomString(),
+                'date' => $orphanVisit->date->toAtomString(),
                 'potentialBot' => false,
-                'visitedUrl' => $orphanVisit->visitedUrl(),
-                'type' => $orphanVisit->type()->value,
+                'visitedUrl' => $orphanVisit->visitedUrl,
+                'type' => $orphanVisit->type->value,
+                'redirectUrl' => null,
             ],
         ], $update->payload);
     }
 
-    public function provideOrphanVisits(): iterable
+    public static function provideOrphanVisits(): iterable
     {
-        $visitor = Visitor::emptyInstance();
+        $visitor = Visitor::empty();
 
         yield VisitType::REGULAR_404->value => [Visit::forRegularNotFound($visitor)];
         yield VisitType::INVALID_SHORT_URL->value => [Visit::forInvalidShortUrl($visitor)];
         yield VisitType::BASE_URL->value => [Visit::forBasePath($visitor)];
     }
 
-    /** @test */
+    #[Test]
     public function shortUrlIsProperlySerializedIntoUpdate(): void
     {
         $shortUrl = ShortUrl::create(ShortUrlCreation::fromRawData([
             'customSlug' => 'foo',
-            'longUrl' => '',
+            'longUrl' => 'https://longUrl',
             'title' => 'The title',
         ]));
 
@@ -126,9 +135,8 @@ class PublishingUpdatesGeneratorTest extends TestCase
         self::assertEquals(['shortUrl' => [
             'shortCode' => $shortUrl->getShortCode(),
             'shortUrl' => 'http:/' . $shortUrl->getShortCode(),
-            'longUrl' => '',
-            'dateCreated' => $shortUrl->getDateCreated()->toAtomString(),
-            'visitsCount' => 0,
+            'longUrl' => 'https://longUrl',
+            'dateCreated' => $this->now->toAtomString(),
             'tags' => [],
             'meta' => [
                 'validSince' => null,
@@ -136,9 +144,11 @@ class PublishingUpdatesGeneratorTest extends TestCase
                 'maxVisits' => null,
             ],
             'domain' => null,
-            'title' => $shortUrl->title(),
+            'title' => 'The title',
             'crawlable' => false,
             'forwardQuery' => true,
+            'visitsSummary' => VisitsSummary::fromTotalAndNonBots(0, 0),
+            'hasRedirectRules' => false,
         ]], $update->payload);
     }
 }

@@ -4,7 +4,6 @@ declare(strict_types=1);
 
 namespace Shlinkio\Shlink\CLI\Command\Domain;
 
-use Shlinkio\Shlink\CLI\Util\ExitCodes;
 use Shlinkio\Shlink\Core\Config\NotFoundRedirects;
 use Shlinkio\Shlink\Core\Domain\DomainServiceInterface;
 use Shlinkio\Shlink\Core\Domain\Model\DomainItem;
@@ -14,16 +13,16 @@ use Symfony\Component\Console\Input\InputInterface;
 use Symfony\Component\Console\Output\OutputInterface;
 use Symfony\Component\Console\Style\SymfonyStyle;
 
-use function Functional\filter;
-use function Functional\invoke;
+use function array_filter;
+use function array_map;
 use function sprintf;
 use function str_contains;
 
 class DomainRedirectsCommand extends Command
 {
-    public const NAME = 'domain:redirects';
+    public const string NAME = 'domain:redirects';
 
-    public function __construct(private DomainServiceInterface $domainService)
+    public function __construct(private readonly DomainServiceInterface $domainService)
     {
         parent::__construct();
     }
@@ -52,9 +51,9 @@ class DomainRedirectsCommand extends Command
         $askNewDomain = static fn () => $io->ask('Domain authority for which you want to set specific redirects');
 
         /** @var string[] $availableDomains */
-        $availableDomains = invoke(
-            filter($this->domainService->listDomains(), static fn (DomainItem $item) => ! $item->isDefault),
-            'toString',
+        $availableDomains = array_map(
+            static fn (DomainItem $item) => $item->toString(),
+            array_filter($this->domainService->listDomains(), static fn (DomainItem $item) => ! $item->isDefault),
         );
         if (empty($availableDomains)) {
             $input->setArgument('domain', $askNewDomain());
@@ -68,13 +67,13 @@ class DomainRedirectsCommand extends Command
         $input->setArgument('domain', str_contains($selectedOption, 'New domain') ? $askNewDomain() : $selectedOption);
     }
 
-    protected function execute(InputInterface $input, OutputInterface $output): ?int
+    protected function execute(InputInterface $input, OutputInterface $output): int
     {
         $io = new SymfonyStyle($input, $output);
         $domainAuthority = $input->getArgument('domain');
         $domain = $this->domainService->findByAuthority($domainAuthority);
 
-        $ask = static function (string $message, ?string $current) use ($io): ?string {
+        $ask = static function (string $message, string|null $current) use ($io): string|null {
             if ($current === null) {
                 return $io->ask(sprintf('%s (Leave empty for no redirect)', $message));
             }
@@ -109,6 +108,6 @@ class DomainRedirectsCommand extends Command
 
         $io->success(sprintf('"Not found" redirects properly set for "%s"', $domainAuthority));
 
-        return ExitCodes::EXIT_SUCCESS;
+        return self::SUCCESS;
     }
 }

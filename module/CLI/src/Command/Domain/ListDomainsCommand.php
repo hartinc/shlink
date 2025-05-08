@@ -4,7 +4,6 @@ declare(strict_types=1);
 
 namespace Shlinkio\Shlink\CLI\Command\Domain;
 
-use Shlinkio\Shlink\CLI\Util\ExitCodes;
 use Shlinkio\Shlink\CLI\Util\ShlinkTable;
 use Shlinkio\Shlink\Core\Config\NotFoundRedirectConfigInterface;
 use Shlinkio\Shlink\Core\Domain\DomainServiceInterface;
@@ -14,13 +13,13 @@ use Symfony\Component\Console\Input\InputInterface;
 use Symfony\Component\Console\Input\InputOption;
 use Symfony\Component\Console\Output\OutputInterface;
 
-use function Functional\map;
+use function array_map;
 
 class ListDomainsCommand extends Command
 {
-    public const NAME = 'domain:list';
+    public const string NAME = 'domain:list';
 
-    public function __construct(private DomainServiceInterface $domainService)
+    public function __construct(private readonly DomainServiceInterface $domainService)
     {
         parent::__construct();
     }
@@ -38,7 +37,7 @@ class ListDomainsCommand extends Command
             );
     }
 
-    protected function execute(InputInterface $input, OutputInterface $output): ?int
+    protected function execute(InputInterface $input, OutputInterface $output): int
     {
         $domains = $this->domainService->listDomains();
         $showRedirects = $input->getOption('show-redirects');
@@ -47,7 +46,7 @@ class ListDomainsCommand extends Command
 
         $table->render(
             $showRedirects ? [...$commonFields, '"Not found" redirects'] : $commonFields,
-            map($domains, function (DomainItem $domain) use ($showRedirects) {
+            array_map(function (DomainItem $domain) use ($showRedirects) {
                 $commonValues = [$domain->toString(), $domain->isDefault ? 'Yes' : 'No'];
 
                 return $showRedirects
@@ -56,10 +55,10 @@ class ListDomainsCommand extends Command
                         $this->notFoundRedirectsToString($domain->notFoundRedirectConfig),
                       ]
                     : $commonValues;
-            }),
+            }, $domains),
         );
 
-        return ExitCodes::EXIT_SUCCESS;
+        return self::SUCCESS;
     }
 
     private function notFoundRedirectsToString(NotFoundRedirectConfigInterface $config): string

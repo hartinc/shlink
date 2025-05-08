@@ -7,6 +7,8 @@ namespace ShlinkioTest\Shlink\Core\EventDispatcher\RedisPubSub;
 use Doctrine\ORM\EntityManagerInterface;
 use DomainException;
 use Exception;
+use PHPUnit\Framework\Attributes\DataProvider;
+use PHPUnit\Framework\Attributes\Test;
 use PHPUnit\Framework\MockObject\MockObject;
 use PHPUnit\Framework\TestCase;
 use Psr\Log\LoggerInterface;
@@ -35,7 +37,7 @@ class NotifyNewShortUrlToRedisTest extends TestCase
         $this->logger = $this->createMock(LoggerInterface::class);
     }
 
-    /** @test */
+    #[Test]
     public function doesNothingWhenTheFeatureIsNotEnabled(): void
     {
         $this->helper->expects($this->never())->method('publishUpdate');
@@ -46,16 +48,13 @@ class NotifyNewShortUrlToRedisTest extends TestCase
         $this->createListener(false)(new ShortUrlCreated('123'));
     }
 
-    /**
-     * @test
-     * @dataProvider provideExceptions
-     */
+    #[Test, DataProvider('provideExceptions')]
     public function printsDebugMessageInCaseOfError(Throwable $e): void
     {
         $shortUrlId = '123';
         $update = Update::forTopicAndPayload(Topic::NEW_SHORT_URL->value, []);
         $this->em->expects($this->once())->method('find')->with(ShortUrl::class, $shortUrlId)->willReturn(
-            ShortUrl::withLongUrl(''),
+            ShortUrl::withLongUrl('https://longUrl'),
         );
         $this->updatesGenerator->expects($this->once())->method('newShortUrlUpdate')->with(
             $this->isInstanceOf(ShortUrl::class),
@@ -69,7 +68,7 @@ class NotifyNewShortUrlToRedisTest extends TestCase
         $this->createListener()(new ShortUrlCreated($shortUrlId));
     }
 
-    public function provideExceptions(): iterable
+    public static function provideExceptions(): iterable
     {
         yield [new RuntimeException('RuntimeException Error')];
         yield [new Exception('Exception Error')];

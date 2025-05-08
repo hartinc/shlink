@@ -12,16 +12,20 @@ use Shlinkio\Shlink\Core\ShortUrl\Spec\BelongsToDomain;
 use Shlinkio\Shlink\Core\ShortUrl\Spec\BelongsToDomainInlined;
 use Shlinkio\Shlink\Rest\Entity\ApiKeyRole;
 
+use function sprintf;
+
 enum Role: string
 {
     case AUTHORED_SHORT_URLS = 'AUTHORED_SHORT_URLS';
     case DOMAIN_SPECIFIC = 'DOMAIN_SPECIFIC';
+    case NO_ORPHAN_VISITS = 'NO_ORPHAN_VISITS';
 
-    public function toFriendlyName(): string
+    public function toFriendlyName(array $meta): string
     {
         return match ($this) {
             self::AUTHORED_SHORT_URLS => 'Author only',
-            self::DOMAIN_SPECIFIC => 'Domain only',
+            self::DOMAIN_SPECIFIC => sprintf('Domain only: %s', Role::domainAuthorityFromMeta($meta)),
+            self::NO_ORPHAN_VISITS => 'No orphan visits',
         };
     }
 
@@ -30,22 +34,25 @@ enum Role: string
         return match ($this) {
             self::AUTHORED_SHORT_URLS => 'author-only',
             self::DOMAIN_SPECIFIC => 'domain-only',
+            self::NO_ORPHAN_VISITS => 'no-orphan-visits',
         };
     }
 
-    public static function toSpec(ApiKeyRole $role, ?string $context = null): Specification
+    public static function toSpec(ApiKeyRole $role, string|null $context = null): Specification
     {
-        return match ($role->role()) {
-            self::AUTHORED_SHORT_URLS => new BelongsToApiKey($role->apiKey(), $context),
+        return match ($role->role) {
+            self::AUTHORED_SHORT_URLS => new BelongsToApiKey($role->apiKey, $context),
             self::DOMAIN_SPECIFIC => new BelongsToDomain(self::domainIdFromMeta($role->meta()), $context),
+            default => Spec::andX(),
         };
     }
 
     public static function toInlinedSpec(ApiKeyRole $role): Specification
     {
-        return match ($role->role()) {
-            self::AUTHORED_SHORT_URLS => Spec::andX(new BelongsToApiKeyInlined($role->apiKey())),
+        return match ($role->role) {
+            self::AUTHORED_SHORT_URLS => Spec::andX(new BelongsToApiKeyInlined($role->apiKey)),
             self::DOMAIN_SPECIFIC => Spec::andX(new BelongsToDomainInlined(self::domainIdFromMeta($role->meta()))),
+            default => Spec::andX(),
         };
     }
 

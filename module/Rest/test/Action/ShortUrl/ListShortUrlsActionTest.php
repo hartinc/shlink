@@ -8,12 +8,15 @@ use Cake\Chronos\Chronos;
 use Laminas\Diactoros\Response\JsonResponse;
 use Laminas\Diactoros\ServerRequestFactory;
 use Pagerfanta\Adapter\ArrayAdapter;
+use PHPUnit\Framework\Attributes\DataProvider;
+use PHPUnit\Framework\Attributes\Test;
 use PHPUnit\Framework\MockObject\MockObject;
 use PHPUnit\Framework\TestCase;
 use Shlinkio\Shlink\Common\Paginator\Paginator;
+use Shlinkio\Shlink\Core\Config\Options\UrlShortenerOptions;
 use Shlinkio\Shlink\Core\ShortUrl\Helper\ShortUrlStringifier;
 use Shlinkio\Shlink\Core\ShortUrl\Model\ShortUrlsParams;
-use Shlinkio\Shlink\Core\ShortUrl\ShortUrlService;
+use Shlinkio\Shlink\Core\ShortUrl\ShortUrlListServiceInterface;
 use Shlinkio\Shlink\Core\ShortUrl\Transformer\ShortUrlDataTransformer;
 use Shlinkio\Shlink\Rest\Action\ShortUrl\ListShortUrlsAction;
 use Shlinkio\Shlink\Rest\Entity\ApiKey;
@@ -21,32 +24,26 @@ use Shlinkio\Shlink\Rest\Entity\ApiKey;
 class ListShortUrlsActionTest extends TestCase
 {
     private ListShortUrlsAction $action;
-    private MockObject & ShortUrlService $service;
+    private MockObject & ShortUrlListServiceInterface $service;
 
     protected function setUp(): void
     {
-        $this->service = $this->createMock(ShortUrlService::class);
+        $this->service = $this->createMock(ShortUrlListServiceInterface::class);
 
         $this->action = new ListShortUrlsAction($this->service, new ShortUrlDataTransformer(
-            new ShortUrlStringifier([
-                'hostname' => 'doma.in',
-                'schema' => 'https',
-            ]),
+            new ShortUrlStringifier(new UrlShortenerOptions('s.test')),
         ));
     }
 
-    /**
-     * @test
-     * @dataProvider provideFilteringData
-     */
+    #[Test, DataProvider('provideFilteringData')]
     public function properListReturnsSuccessResponse(
         array $query,
         int $expectedPage,
-        ?string $expectedSearchTerm,
+        string|null $expectedSearchTerm,
         array $expectedTags,
-        ?string $expectedOrderBy,
-        ?string $startDate = null,
-        ?string $endDate = null,
+        string|null $expectedOrderBy,
+        string|null $startDate = null,
+        string|null $endDate = null,
     ): void {
         $apiKey = ApiKey::create();
         $request = ServerRequestFactory::fromGlobals()->withQueryParams($query)
@@ -70,7 +67,7 @@ class ListShortUrlsActionTest extends TestCase
         self::assertEquals(200, $response->getStatusCode());
     }
 
-    public function provideFilteringData(): iterable
+    public static function provideFilteringData(): iterable
     {
         yield [[], 1, null, [], null];
         yield [['page' => 10], 10, null, [], null];

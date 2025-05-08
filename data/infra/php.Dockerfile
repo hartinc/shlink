@@ -1,10 +1,10 @@
-FROM php:8.1.13-fpm-alpine3.17
+FROM php:8.4-fpm-alpine3.21
 MAINTAINER Alejandro Celaya <alejandro@alejandrocelaya.com>
 
-ENV APCU_VERSION 5.1.21
-ENV PDO_SQLSRV_VERSION 5.10.1
-ENV MS_ODBC_DOWNLOAD 'b/9/f/b9f3cce4-3925-46d4-9f46-da08869c6486'
-ENV MS_ODBC_SQL_VERSION 18_18.1.1.1
+ENV APCU_VERSION='5.1.24'
+ENV PDO_SQLSRV_VERSION='5.12.0'
+ENV MS_ODBC_DOWNLOAD='7/6/d/76de322a-d860-4894-9945-f0cc5d6a45f8'
+ENV MS_ODBC_SQL_VERSION='18_18.4.1.1'
 
 RUN apk update
 
@@ -31,7 +31,9 @@ RUN docker-php-ext-install gd
 RUN apk add --no-cache postgresql-dev
 RUN docker-php-ext-install pdo_pgsql
 
-RUN docker-php-ext-install sockets
+RUN apk add --no-cache --virtual .phpize-deps $PHPIZE_DEPS linux-headers && \
+    docker-php-ext-install sockets && \
+    apk del .phpize-deps
 RUN docker-php-ext-install bcmath
 
 # Install APCu extension
@@ -44,12 +46,13 @@ RUN mkdir -p /usr/src/php/ext/apcu \
   && rm /usr/local/etc/php/conf.d/docker-php-ext-apcu.ini \
   && echo extension=apcu.so > /usr/local/etc/php/conf.d/20-php-ext-apcu.ini
 
-# Install pcov and sqlsrv driver
-RUN wget https://download.microsoft.com/download/${MS_ODBC_DOWNLOAD}/msodbcsql${MS_ODBC_SQL_VERSION}-1_amd64.apk && \
+# Install xdebug and sqlsrv driver
+RUN apk add --update linux-headers && \
+    wget https://download.microsoft.com/download/${MS_ODBC_DOWNLOAD}/msodbcsql${MS_ODBC_SQL_VERSION}-1_amd64.apk && \
     apk add --allow-untrusted msodbcsql${MS_ODBC_SQL_VERSION}-1_amd64.apk && \
     apk add --no-cache --virtual .phpize-deps $PHPIZE_DEPS unixodbc-dev && \
-    pecl install pdo_sqlsrv-${PDO_SQLSRV_VERSION} pcov && \
-    docker-php-ext-enable pdo_sqlsrv pcov && \
+    pecl install pdo_sqlsrv-${PDO_SQLSRV_VERSION} xdebug && \
+    docker-php-ext-enable pdo_sqlsrv xdebug && \
     apk del .phpize-deps && \
     rm msodbcsql${MS_ODBC_SQL_VERSION}-1_amd64.apk
 

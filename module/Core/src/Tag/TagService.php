@@ -10,85 +10,77 @@ use Shlinkio\Shlink\Common\Paginator\Paginator;
 use Shlinkio\Shlink\Core\Exception\ForbiddenTagOperationException;
 use Shlinkio\Shlink\Core\Exception\TagConflictException;
 use Shlinkio\Shlink\Core\Exception\TagNotFoundException;
+use Shlinkio\Shlink\Core\Model\Renaming;
 use Shlinkio\Shlink\Core\Tag\Entity\Tag;
-use Shlinkio\Shlink\Core\Tag\Model\TagInfo;
-use Shlinkio\Shlink\Core\Tag\Model\TagRenaming;
 use Shlinkio\Shlink\Core\Tag\Model\TagsParams;
 use Shlinkio\Shlink\Core\Tag\Paginator\Adapter\TagsInfoPaginatorAdapter;
 use Shlinkio\Shlink\Core\Tag\Paginator\Adapter\TagsPaginatorAdapter;
-use Shlinkio\Shlink\Core\Tag\Repository\TagRepository;
 use Shlinkio\Shlink\Core\Tag\Repository\TagRepositoryInterface;
 use Shlinkio\Shlink\Rest\Entity\ApiKey;
 
-class TagService implements TagServiceInterface
+readonly class TagService implements TagServiceInterface
 {
-    public function __construct(private ORM\EntityManagerInterface $em)
+    public function __construct(private ORM\EntityManagerInterface $em, private TagRepositoryInterface $repo)
     {
     }
 
     /**
-     * @return Tag[]|Paginator
+     * @inheritDoc
      */
-    public function listTags(TagsParams $params, ?ApiKey $apiKey = null): Paginator
+    public function listTags(TagsParams $params, ApiKey|null $apiKey = null): Paginator
     {
-        /** @var TagRepository $repo */
-        $repo = $this->em->getRepository(Tag::class);
-        return $this->createPaginator(new TagsPaginatorAdapter($repo, $params, $apiKey), $params);
+        return $this->createPaginator(new TagsPaginatorAdapter($this->repo, $params, $apiKey), $params);
     }
 
     /**
-     * @return TagInfo[]|Paginator
+     * @inheritDoc
      */
-    public function tagsInfo(TagsParams $params, ?ApiKey $apiKey = null): Paginator
+    public function tagsInfo(TagsParams $params, ApiKey|null $apiKey = null): Paginator
     {
-        /** @var TagRepositoryInterface $repo */
-        $repo = $this->em->getRepository(Tag::class);
-        return $this->createPaginator(new TagsInfoPaginatorAdapter($repo, $params, $apiKey), $params);
+        return $this->createPaginator(new TagsInfoPaginatorAdapter($this->repo, $params, $apiKey), $params);
     }
 
+    /**
+     * @template T
+     * @param AdapterInterface<T> $adapter
+     * @return Paginator<T>
+     */
     private function createPaginator(AdapterInterface $adapter, TagsParams $params): Paginator
     {
-        return (new Paginator($adapter))
-            ->setMaxPerPage($params->itemsPerPage)
-            ->setCurrentPage($params->page);
+        $paginator = new Paginator($adapter);
+        $paginator->setMaxPerPage($params->itemsPerPage)
+                  ->setCurrentPage($params->page);
+
+        return $paginator;
     }
 
     /**
-     * @param string[] $tagNames
-     * @throws ForbiddenTagOperationException
+     * @inheritDoc
      */
-    public function deleteTags(array $tagNames, ?ApiKey $apiKey = null): void
+    public function deleteTags(array $tagNames, ApiKey|null $apiKey = null): void
     {
-        if ($apiKey !== null && ! $apiKey->isAdmin()) {
+        if (ApiKey::isShortUrlRestricted($apiKey)) {
             throw ForbiddenTagOperationException::forDeletion();
         }
 
-        /** @var TagRepository $repo */
-        $repo = $this->em->getRepository(Tag::class);
-        $repo->deleteByName($tagNames);
+        $this->repo->deleteByName($tagNames);
     }
 
     /**
-     * @throws TagNotFoundException
-     * @throws TagConflictException
-     * @throws ForbiddenTagOperationException
+     * @inheritDoc
      */
-    public function renameTag(TagRenaming $renaming, ?ApiKey $apiKey = null): Tag
+    public function renameTag(Renaming $renaming, ApiKey|null $apiKey = null): Tag
     {
-        if ($apiKey !== null && ! $apiKey->isAdmin()) {
+        if (ApiKey::isShortUrlRestricted($apiKey)) {
             throw ForbiddenTagOperationException::forRenaming();
         }
 
-        /** @var TagRepository $repo */
-        $repo = $this->em->getRepository(Tag::class);
-
-        /** @var Tag|null $tag */
-        $tag = $repo->findOneBy(['name' => $renaming->oldName]);
+        $tag = $this->repo->findOneBy(['name' => $renaming->oldName]);
         if ($tag === null) {
             throw TagNotFoundException::fromTag($renaming->oldName);
         }
 
-        $newNameExists = $renaming->nameChanged() && $repo->count(['name' => $renaming->newName]) > 0;
+        $newNameExists = $renaming->nameChanged() && $this->repo->count(['name' => $renaming->newName]) > 0;
         if ($newNameExists) {
             throw TagConflictException::forExistingTag($renaming);
         }

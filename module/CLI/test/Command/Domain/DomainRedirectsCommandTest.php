@@ -4,37 +4,34 @@ declare(strict_types=1);
 
 namespace ShlinkioTest\Shlink\CLI\Command\Domain;
 
+use PHPUnit\Framework\Attributes\DataProvider;
+use PHPUnit\Framework\Attributes\Test;
 use PHPUnit\Framework\MockObject\MockObject;
 use PHPUnit\Framework\TestCase;
 use Shlinkio\Shlink\CLI\Command\Domain\DomainRedirectsCommand;
 use Shlinkio\Shlink\Core\Config\NotFoundRedirects;
+use Shlinkio\Shlink\Core\Config\Options\NotFoundRedirectOptions;
 use Shlinkio\Shlink\Core\Domain\DomainServiceInterface;
 use Shlinkio\Shlink\Core\Domain\Entity\Domain;
 use Shlinkio\Shlink\Core\Domain\Model\DomainItem;
-use Shlinkio\Shlink\Core\Options\NotFoundRedirectOptions;
-use ShlinkioTest\Shlink\CLI\CliTestUtilsTrait;
+use ShlinkioTest\Shlink\CLI\Util\CliTestUtils;
 use Symfony\Component\Console\Tester\CommandTester;
 
 use function substr_count;
 
 class DomainRedirectsCommandTest extends TestCase
 {
-    use CliTestUtilsTrait;
-
     private CommandTester $commandTester;
     private MockObject & DomainServiceInterface $domainService;
 
     protected function setUp(): void
     {
         $this->domainService = $this->createMock(DomainServiceInterface::class);
-        $this->commandTester = $this->testerForCommand(new DomainRedirectsCommand($this->domainService));
+        $this->commandTester = CliTestUtils::testerForCommand(new DomainRedirectsCommand($this->domainService));
     }
 
-    /**
-     * @test
-     * @dataProvider provideDomains
-     */
-    public function onlyPlainQuestionsAreAskedForNewDomainsAndDomainsWithNoRedirects(?Domain $domain): void
+    #[Test, DataProvider('provideDomains')]
+    public function onlyPlainQuestionsAreAskedForNewDomainsAndDomainsWithNoRedirects(Domain|null $domain): void
     {
         $domainAuthority = 'my-domain.com';
         $this->domainService->expects($this->once())->method('findByAuthority')->with($domainAuthority)->willReturn(
@@ -60,13 +57,13 @@ class DomainRedirectsCommandTest extends TestCase
         self::assertEquals(3, substr_count($output, '(Leave empty for no redirect)'));
     }
 
-    public function provideDomains(): iterable
+    public static function provideDomains(): iterable
     {
         yield 'no domain' => [null];
         yield 'domain without redirects' => [Domain::withAuthority('')];
     }
 
-    /** @test */
+    #[Test]
     public function offersNewOptionsForDomainsWithExistingRedirects(): void
     {
         $domainAuthority = 'example.com';
@@ -95,7 +92,7 @@ class DomainRedirectsCommandTest extends TestCase
         self::assertEquals(3, substr_count($output, 'Remove redirect'));
     }
 
-    /** @test */
+    #[Test]
     public function authorityIsRequestedWhenNotProvidedAndNoOtherDomainsExist(): void
     {
         $domainAuthority = 'example.com';
@@ -117,7 +114,7 @@ class DomainRedirectsCommandTest extends TestCase
         self::assertStringContainsString('Domain authority for which you want to set specific redirects', $output);
     }
 
-    /** @test */
+    #[Test]
     public function oneOfTheExistingDomainsCanBeSelected(): void
     {
         $domainAuthority = 'existing-two.com';
@@ -146,7 +143,7 @@ class DomainRedirectsCommandTest extends TestCase
         self::assertStringContainsString($domainAuthority, $output);
     }
 
-    /** @test */
+    #[Test]
     public function aNewDomainCanBeCreatedEvenIfOthersAlreadyExist(): void
     {
         $domainAuthority = 'new-domain.com';

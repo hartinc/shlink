@@ -16,7 +16,7 @@ use Symfony\Component\Console\Input\InputInterface;
 
 class GetDomainVisitsCommand extends AbstractVisitsListCommand
 {
-    public const NAME = 'domain:visits';
+    public const string NAME = 'domain:visits';
 
     public function __construct(
         VisitsStatsHelperInterface $visitsHelper,
@@ -33,6 +33,9 @@ class GetDomainVisitsCommand extends AbstractVisitsListCommand
             ->addArgument('domain', InputArgument::REQUIRED, 'The domain which visits we want to get.');
     }
 
+    /**
+     * @return Paginator<Visit>
+     */
     protected function getVisitsPaginator(InputInterface $input, DateRange $dateRange): Paginator
     {
         $domain = $input->getArgument('domain');
@@ -44,7 +47,7 @@ class GetDomainVisitsCommand extends AbstractVisitsListCommand
      */
     protected function mapExtraFields(Visit $visit): array
     {
-        $shortUrl = $visit->getShortUrl();
+        $shortUrl = $visit->shortUrl;
         return $shortUrl === null ? [] : ['shortUrl' => $this->shortUrlStringifier->stringify($shortUrl)];
     }
 }

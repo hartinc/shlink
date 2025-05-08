@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace ShlinkioTest\Shlink\CLI\Command\Tag;
 
 use Pagerfanta\Adapter\ArrayAdapter;
+use PHPUnit\Framework\Attributes\Test;
 use PHPUnit\Framework\MockObject\MockObject;
 use PHPUnit\Framework\TestCase;
 use Shlinkio\Shlink\CLI\Command\Tag\GetTagVisitsCommand;
@@ -16,13 +17,11 @@ use Shlinkio\Shlink\Core\Visit\Entity\VisitLocation;
 use Shlinkio\Shlink\Core\Visit\Model\Visitor;
 use Shlinkio\Shlink\Core\Visit\VisitsStatsHelperInterface;
 use Shlinkio\Shlink\IpGeolocation\Model\Location;
-use ShlinkioTest\Shlink\CLI\CliTestUtilsTrait;
+use ShlinkioTest\Shlink\CLI\Util\CliTestUtils;
 use Symfony\Component\Console\Tester\CommandTester;
 
 class GetTagVisitsCommandTest extends TestCase
 {
-    use CliTestUtilsTrait;
-
     private CommandTester $commandTester;
     private MockObject & VisitsStatsHelperInterface $visitsHelper;
     private MockObject & ShortUrlStringifierInterface $stringifier;
@@ -32,16 +31,16 @@ class GetTagVisitsCommandTest extends TestCase
         $this->visitsHelper = $this->createMock(VisitsStatsHelperInterface::class);
         $this->stringifier = $this->createMock(ShortUrlStringifierInterface::class);
 
-        $this->commandTester = $this->testerForCommand(
+        $this->commandTester = CliTestUtils::testerForCommand(
             new GetTagVisitsCommand($this->visitsHelper, $this->stringifier),
         );
     }
 
-    /** @test */
+    #[Test]
     public function outputIsProperlyGenerated(): void
     {
-        $shortUrl = ShortUrl::createEmpty();
-        $visit = Visit::forValidShortUrl($shortUrl, new Visitor('bar', 'foo', '', ''))->locate(
+        $shortUrl = ShortUrl::createFake();
+        $visit = Visit::forValidShortUrl($shortUrl, Visitor::fromParams('bar', 'foo', ''))->locate(
             VisitLocation::fromGeolocation(new Location('', 'Spain', '', 'Madrid', 0, 0, '')),
         );
         $tag = 'abc123';
@@ -58,7 +57,7 @@ class GetTagVisitsCommandTest extends TestCase
             +---------+---------------------------+------------+---------+--------+---------------+
             | Referer | Date                      | User agent | Country | City   | Short Url     |
             +---------+---------------------------+------------+---------+--------+---------------+
-            | foo     | {$visit->getDate()->toAtomString()} | bar        | Spain   | Madrid | the_short_url |
+            | foo     | {$visit->date->toAtomString()} | bar        | Spain   | Madrid | the_short_url |
             +---------+---------------------------+------------+---------+--------+---------------+
 
             OUTPUT,

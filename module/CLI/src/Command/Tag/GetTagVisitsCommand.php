@@ -16,7 +16,7 @@ use Symfony\Component\Console\Input\InputInterface;
 
 class GetTagVisitsCommand extends AbstractVisitsListCommand
 {
-    public const NAME = 'tag:visits';
+    public const string NAME = 'tag:visits';
 
     public function __construct(
         VisitsStatsHelperInterface $visitsHelper,
@@ -33,6 +33,9 @@ class GetTagVisitsCommand extends AbstractVisitsListCommand
             ->addArgument('tag', InputArgument::REQUIRED, 'The tag which visits we want to get.');
     }
 
+    /**
+     * @return Paginator<Visit>
+     */
     protected function getVisitsPaginator(InputInterface $input, DateRange $dateRange): Paginator
     {
         $tag = $input->getArgument('tag');
@@ -44,7 +47,7 @@ class GetTagVisitsCommand extends AbstractVisitsListCommand
      */
     protected function mapExtraFields(Visit $visit): array
     {
-        $shortUrl = $visit->getShortUrl();
+        $shortUrl = $visit->shortUrl;
         return $shortUrl === null ? [] : ['shortUrl' => $this->shortUrlStringifier->stringify($shortUrl)];
     }
 }

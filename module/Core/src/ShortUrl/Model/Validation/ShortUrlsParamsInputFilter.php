@@ -7,24 +7,26 @@ namespace Shlinkio\Shlink\Core\ShortUrl\Model\Validation;
 use Laminas\InputFilter\InputFilter;
 use Laminas\Validator\InArray;
 use Shlinkio\Shlink\Common\Paginator\Paginator;
-use Shlinkio\Shlink\Common\Validation;
-use Shlinkio\Shlink\Core\ShortUrl\Model\ShortUrlsParams;
+use Shlinkio\Shlink\Common\Validation\InputFactory;
+use Shlinkio\Shlink\Core\ShortUrl\Model\OrderableField;
 use Shlinkio\Shlink\Core\ShortUrl\Model\TagsMode;
 
+use function Shlinkio\Shlink\Core\enumValues;
+
+/** @extends InputFilter<mixed> */
 class ShortUrlsParamsInputFilter extends InputFilter
 {
-    use Validation\InputFactoryTrait;
-
-    public const PAGE = 'page';
-    public const SEARCH_TERM = 'searchTerm';
-    public const TAGS = 'tags';
-    public const START_DATE = 'startDate';
-    public const END_DATE = 'endDate';
-    public const ITEMS_PER_PAGE = 'itemsPerPage';
-    public const TAGS_MODE = 'tagsMode';
-    public const ORDER_BY = 'orderBy';
-    public const EXCLUDE_MAX_VISITS_REACHED = 'excludeMaxVisitsReached';
-    public const EXCLUDE_PAST_VALID_UNTIL = 'excludePastValidUntil';
+    public const string PAGE = 'page';
+    public const string SEARCH_TERM = 'searchTerm';
+    public const string TAGS = 'tags';
+    public const string START_DATE = 'startDate';
+    public const string END_DATE = 'endDate';
+    public const string ITEMS_PER_PAGE = 'itemsPerPage';
+    public const string TAGS_MODE = 'tagsMode';
+    public const string ORDER_BY = 'orderBy';
+    public const string EXCLUDE_MAX_VISITS_REACHED = 'excludeMaxVisitsReached';
+    public const string EXCLUDE_PAST_VALID_UNTIL = 'excludePastValidUntil';
+    public const string DOMAIN = 'domain';
 
     public function __construct(array $data)
     {
@@ -34,26 +36,28 @@ class ShortUrlsParamsInputFilter extends InputFilter
 
     private function initialize(): void
     {
-        $this->add($this->createDateInput(self::START_DATE, false));
-        $this->add($this->createDateInput(self::END_DATE, false));
+        $this->add(InputFactory::date(self::START_DATE));
+        $this->add(InputFactory::date(self::END_DATE));
 
-        $this->add($this->createInput(self::SEARCH_TERM, false));
+        $this->add(InputFactory::basic(self::SEARCH_TERM));
 
-        $this->add($this->createNumericInput(self::PAGE, false));
-        $this->add($this->createNumericInput(self::ITEMS_PER_PAGE, false, Paginator::ALL_ITEMS));
+        $this->add(InputFactory::numeric(self::PAGE));
+        $this->add(InputFactory::numeric(self::ITEMS_PER_PAGE, Paginator::ALL_ITEMS));
 
-        $this->add($this->createTagsInput(self::TAGS, false));
+        $this->add(InputFactory::tags(self::TAGS));
 
-        $tagsMode = $this->createInput(self::TAGS_MODE, false);
+        $tagsMode = InputFactory::basic(self::TAGS_MODE);
         $tagsMode->getValidatorChain()->attach(new InArray([
-            'haystack' => TagsMode::values(),
+            'haystack' => enumValues(TagsMode::class),
             'strict' => InArray::COMPARE_STRICT,
         ]));
         $this->add($tagsMode);
 
-        $this->add($this->createOrderByInput(self::ORDER_BY, ShortUrlsParams::ORDERABLE_FIELDS));
+        $this->add(InputFactory::orderBy(self::ORDER_BY, enumValues(OrderableField::class)));
 
-        $this->add($this->createBooleanInput(self::EXCLUDE_MAX_VISITS_REACHED, false));
-        $this->add($this->createBooleanInput(self::EXCLUDE_PAST_VALID_UNTIL, false));
+        $this->add(InputFactory::boolean(self::EXCLUDE_MAX_VISITS_REACHED));
+        $this->add(InputFactory::boolean(self::EXCLUDE_PAST_VALID_UNTIL));
+
+        $this->add(InputFactory::basic(self::DOMAIN));
     }
 }

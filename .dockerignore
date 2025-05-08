@@ -1,5 +1,6 @@
 bin/rr
 config/autoload/*local*
+config/params/shlink_dev_env.*
 data/infra
 data/cache/*
 data/log/*
@@ -19,7 +20,6 @@ indocker
 docker-*
 phpstan.neon
 php*xml*
-infection*
 **/test*
 build*
 **/.*

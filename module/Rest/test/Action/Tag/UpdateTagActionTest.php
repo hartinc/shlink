@@ -5,12 +5,14 @@ declare(strict_types=1);
 namespace ShlinkioTest\Shlink\Rest\Action\Tag;
 
 use Laminas\Diactoros\ServerRequestFactory;
+use PHPUnit\Framework\Attributes\DataProvider;
+use PHPUnit\Framework\Attributes\Test;
 use PHPUnit\Framework\MockObject\MockObject;
 use PHPUnit\Framework\TestCase;
 use Psr\Http\Message\ServerRequestInterface;
 use Shlinkio\Shlink\Core\Exception\ValidationException;
+use Shlinkio\Shlink\Core\Model\Renaming;
 use Shlinkio\Shlink\Core\Tag\Entity\Tag;
-use Shlinkio\Shlink\Core\Tag\Model\TagRenaming;
 use Shlinkio\Shlink\Core\Tag\TagServiceInterface;
 use Shlinkio\Shlink\Rest\Action\Tag\UpdateTagAction;
 use Shlinkio\Shlink\Rest\Entity\ApiKey;
@@ -26,10 +28,7 @@ class UpdateTagActionTest extends TestCase
         $this->action = new UpdateTagAction($this->tagService);
     }
 
-    /**
-     * @test
-     * @dataProvider provideParams
-     */
+    #[Test, DataProvider('provideParams')]
     public function whenInvalidParamsAreProvidedAnErrorIsReturned(array $bodyParams): void
     {
         $request = $this->requestWithApiKey()->withParsedBody($bodyParams);
@@ -39,14 +38,14 @@ class UpdateTagActionTest extends TestCase
         $this->action->handle($request);
     }
 
-    public function provideParams(): iterable
+    public static function provideParams(): iterable
     {
         yield 'old name only' => [['oldName' => 'foo']];
         yield 'new name only' => [['newName' => 'foo']];
         yield 'no params' => [[]];
     }
 
-    /** @test */
+    #[Test]
     public function correctInvocationRenamesTag(): void
     {
         $request = $this->requestWithApiKey()->withParsedBody([
@@ -54,7 +53,7 @@ class UpdateTagActionTest extends TestCase
             'newName' => 'bar',
         ]);
         $this->tagService->expects($this->once())->method('renameTag')->with(
-            TagRenaming::fromNames('foo', 'bar'),
+            Renaming::fromNames('foo', 'bar'),
             $this->isInstanceOf(ApiKey::class),
         )->willReturn(new Tag('bar'));
 

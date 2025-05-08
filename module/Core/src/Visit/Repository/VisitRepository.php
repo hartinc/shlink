@@ -8,79 +8,26 @@ use Doctrine\ORM\Query\ResultSetMappingBuilder;
 use Doctrine\ORM\QueryBuilder;
 use Happyr\DoctrineSpecification\Repository\EntitySpecificationRepository;
 use Shlinkio\Shlink\Common\Util\DateRange;
+use Shlinkio\Shlink\Core\Domain\Entity\Domain;
 use Shlinkio\Shlink\Core\ShortUrl\Entity\ShortUrl;
 use Shlinkio\Shlink\Core\ShortUrl\Model\ShortUrlIdentifier;
-use Shlinkio\Shlink\Core\ShortUrl\Repository\ShortUrlRepositoryInterface;
+use Shlinkio\Shlink\Core\ShortUrl\Repository\ShortUrlRepository;
 use Shlinkio\Shlink\Core\Visit\Entity\Visit;
 use Shlinkio\Shlink\Core\Visit\Entity\VisitLocation;
+use Shlinkio\Shlink\Core\Visit\Persistence\OrphanVisitsCountFiltering;
+use Shlinkio\Shlink\Core\Visit\Persistence\OrphanVisitsListFiltering;
 use Shlinkio\Shlink\Core\Visit\Persistence\VisitsCountFiltering;
 use Shlinkio\Shlink\Core\Visit\Persistence\VisitsListFiltering;
 use Shlinkio\Shlink\Core\Visit\Spec\CountOfNonOrphanVisits;
 use Shlinkio\Shlink\Core\Visit\Spec\CountOfOrphanVisits;
+use Shlinkio\Shlink\Rest\ApiKey\Role;
+use Shlinkio\Shlink\Rest\Entity\ApiKey;
 
 use const PHP_INT_MAX;
 
+/** @extends EntitySpecificationRepository<Visit> */
 class VisitRepository extends EntitySpecificationRepository implements VisitRepositoryInterface
 {
-    /**
-     * @return iterable|Visit[]
-     */
-    public function findUnlocatedVisits(int $blockSize = self::DEFAULT_BLOCK_SIZE): iterable
-    {
-        $qb = $this->getEntityManager()->createQueryBuilder();
-        $qb->select('v')
-           ->from(Visit::class, 'v')
-           ->where($qb->expr()->isNull('v.visitLocation'));
-
-        return $this->visitsIterableForQuery($qb, $blockSize);
-    }
-
-    /**
-     * @return iterable|Visit[]
-     */
-    public function findVisitsWithEmptyLocation(int $blockSize = self::DEFAULT_BLOCK_SIZE): iterable
-    {
-        $qb = $this->getEntityManager()->createQueryBuilder();
-        $qb->select('v')
-           ->from(Visit::class, 'v')
-           ->join('v.visitLocation', 'vl')
-           ->where($qb->expr()->isNotNull('v.visitLocation'))
-           ->andWhere($qb->expr()->eq('vl.isEmpty', ':isEmpty'))
-           ->setParameter('isEmpty', true);
-
-        return $this->visitsIterableForQuery($qb, $blockSize);
-    }
-
-    public function findAllVisits(int $blockSize = self::DEFAULT_BLOCK_SIZE): iterable
-    {
-        $qb = $this->createQueryBuilder('v');
-        return $this->visitsIterableForQuery($qb, $blockSize);
-    }
-
-    private function visitsIterableForQuery(QueryBuilder $qb, int $blockSize): iterable
-    {
-        $originalQueryBuilder = $qb->setMaxResults($blockSize)
-                                   ->orderBy('v.id', 'ASC');
-        $lastId = '0';
-
-        do {
-            $qb = (clone $originalQueryBuilder)->andWhere($qb->expr()->gt('v.id', $lastId));
-            $iterator = $qb->getQuery()->toIterable();
-            $resultsFound = false;
-            /** @var Visit|null $lastProcessedVisit */
-            $lastProcessedVisit = null;
-
-            foreach ($iterator as $key => $visit) {
-                $resultsFound = true;
-                $lastProcessedVisit = $visit;
-                yield $key => $visit;
-            }
-
-            // As the query is ordered by ID, we can take the last one every time in order to exclude the whole list
-            $lastId = $lastProcessedVisit?->getId() ?? $lastId;
-        } while ($resultsFound);
-    }
-
     /**
      * @return Visit[]
      */
@@ -102,7 +49,7 @@ class VisitRepository extends EntitySpecificationRepository implements VisitRepo
         ShortUrlIdentifier $identifier,
         VisitsCountFiltering $filtering,
     ): QueryBuilder {
-        /** @var ShortUrlRepositoryInterface $shortUrlRepo */
+        /** @var ShortUrlRepository $shortUrlRepo */
         $shortUrlRepo = $this->getEntityManager()->getRepository(ShortUrl::class);
         $shortUrlId = $shortUrlRepo->findOne($identifier, $filtering->apiKey?->spec())?->getId() ?? '-1';
 
@@ -179,7 +126,7 @@ class VisitRepository extends EntitySpecificationRepository implements VisitRepo
         $qb->from(Visit::class, 'v')
            ->join('v.shortUrl', 's');
 
-        if ($domain === 'DEFAULT') {
+        if ($domain === Domain::DEFAULT_AUTHORITY) {
             $qb->where($qb->expr()->isNull('s.domain'));
         } else {
             $qb->join('s.domain', 'd')
@@ -196,15 +143,30 @@ class VisitRepository extends EntitySpecificationRepository implements VisitRepo
         return $qb;
     }
 
-    public function findOrphanVisits(VisitsListFiltering $filtering): array
+    public function findOrphanVisits(OrphanVisitsListFiltering $filtering): array
     {
+        if ($filtering->apiKey?->hasRole(Role::NO_ORPHAN_VISITS)) {
+            return [];
+        }
+
         $qb = $this->createAllVisitsQueryBuilder($filtering);
         $qb->andWhere($qb->expr()->isNull('v.shortUrl'));
+
+        // Parameters in this query need to be inlined, not bound, as we need to use it as sub-query later
+        if ($filtering->type) {
+            $conn = $this->getEntityManager()->getConnection();
+            $qb->andWhere($qb->expr()->eq('v.type', $conn->quote($filtering->type->value)));
+        }
+
         return $this->resolveVisitsWithNativeQuery($qb, $filtering->limit, $filtering->offset);
     }
 
-    public function countOrphanVisits(VisitsCountFiltering $filtering): int
+    public function countOrphanVisits(OrphanVisitsCountFiltering $filtering): int
     {
+        if ($filtering->apiKey?->hasRole(Role::NO_ORPHAN_VISITS)) {
+            return 0;
+        }
+
         return (int) $this->matchSingleScalarResult(new CountOfOrphanVisits($filtering));
     }
 
@@ -216,7 +178,12 @@ class VisitRepository extends EntitySpecificationRepository implements VisitRepo
         $qb = $this->createAllVisitsQueryBuilder($filtering);
         $qb->andWhere($qb->expr()->isNotNull('v.shortUrl'));
 
-        $this->applySpecification($qb, $filtering->apiKey?->inlinedSpec());
+        $apiKey = $filtering->apiKey;
+        if (ApiKey::isShortUrlRestricted($apiKey)) {
+            $qb->join('v.shortUrl', 's');
+        }
+
+        $this->applySpecification($qb, $apiKey?->inlinedSpec(), 'v');
 
         return $this->resolveVisitsWithNativeQuery($qb, $filtering->limit, $filtering->offset);
     }
@@ -226,7 +193,7 @@ class VisitRepository extends EntitySpecificationRepository implements VisitRepo
         return (int) $this->matchSingleScalarResult(new CountOfNonOrphanVisits($filtering));
     }
 
-    private function createAllVisitsQueryBuilder(VisitsListFiltering $filtering): QueryBuilder
+    private function createAllVisitsQueryBuilder(VisitsListFiltering|OrphanVisitsListFiltering $filtering): QueryBuilder
     {
         // Parameters in this query need to be inlined, not bound, as we need to use it as sub-query later
         // Since they are not provided by the caller, it's reasonably safe
@@ -242,7 +209,7 @@ class VisitRepository extends EntitySpecificationRepository implements VisitRepo
         return $qb;
     }
 
-    private function applyDatesInline(QueryBuilder $qb, ?DateRange $dateRange): void
+    private function applyDatesInline(QueryBuilder $qb, DateRange|null $dateRange): void
     {
         $conn = $this->getEntityManager()->getConnection();
 
@@ -254,7 +221,7 @@ class VisitRepository extends EntitySpecificationRepository implements VisitRepo
         }
     }
 
-    private function resolveVisitsWithNativeQuery(QueryBuilder $qb, ?int $limit, ?int $offset): array
+    private function resolveVisitsWithNativeQuery(QueryBuilder $qb, int|null $limit, int|null $offset): array
     {
         // TODO Order by date and ID, not just by ID (order by date DESC, id DESC).
         //      That ensures imported visits are properly ordered even if inserted in wrong chronological order.
@@ -287,7 +254,7 @@ class VisitRepository extends EntitySpecificationRepository implements VisitRepo
         return $this->getEntityManager()->createNativeQuery($nativeQb->getSQL(), $rsm)->getResult();
     }
 
-    public function findMostRecentOrphanVisit(): ?Visit
+    public function findMostRecentOrphanVisit(): Visit|null
     {
         $dql = <<<DQL
             SELECT v

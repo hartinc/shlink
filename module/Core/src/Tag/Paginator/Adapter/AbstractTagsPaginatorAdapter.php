@@ -12,12 +12,16 @@ use Shlinkio\Shlink\Core\Tag\Repository\TagRepositoryInterface;
 use Shlinkio\Shlink\Rest\ApiKey\Spec\WithApiKeySpecsEnsuringJoin;
 use Shlinkio\Shlink\Rest\Entity\ApiKey;
 
+/**
+ * @template T
+ * @implements AdapterInterface<T>
+ */
 abstract class AbstractTagsPaginatorAdapter implements AdapterInterface
 {
     public function __construct(
         protected TagRepositoryInterface $repo,
         protected TagsParams $params,
-        protected ?ApiKey $apiKey,
+        protected ApiKey|null $apiKey,
     ) {
     }
 

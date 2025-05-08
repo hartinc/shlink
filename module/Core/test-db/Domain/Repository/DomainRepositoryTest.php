@@ -6,6 +6,7 @@ namespace ShlinkioDbTest\Shlink\Core\Domain\Repository;
 
 use Doctrine\Common\Collections\ArrayCollection;
 use Doctrine\Common\Collections\Collection;
+use PHPUnit\Framework\Attributes\Test;
 use Shlinkio\Shlink\Core\Config\NotFoundRedirects;
 use Shlinkio\Shlink\Core\Domain\Entity\Domain;
 use Shlinkio\Shlink\Core\Domain\Repository\DomainRepository;
@@ -26,7 +27,7 @@ class DomainRepositoryTest extends DatabaseTestCase
         $this->repo = $this->getEntityManager()->getRepository(Domain::class);
     }
 
-    /** @test */
+    #[Test]
     public function expectedDomainsAreFoundWhenNoApiKeyIsInvolved(): void
     {
         $fooDomain = Domain::withAuthority('foo.com');
@@ -61,7 +62,7 @@ class DomainRepositoryTest extends DatabaseTestCase
         self::assertTrue($this->repo->domainExists('detached.com'));
     }
 
-    /** @test */
+    #[Test]
     public function expectedDomainsAreFoundWhenApiKeyIsProvided(): void
     {
         $authorApiKey = ApiKey::fromMeta(ApiKeyMeta::withRoles(RoleDefinition::forAuthoredShortUrls()));
@@ -127,18 +128,18 @@ class DomainRepositoryTest extends DatabaseTestCase
         self::assertFalse($this->repo->domainExists('foo.com', $detachedWithRedirectsApiKey));
     }
 
-    private function createShortUrl(Domain $domain, ?ApiKey $apiKey = null): ShortUrl
+    private function createShortUrl(Domain $domain, ApiKey|null $apiKey = null): ShortUrl
     {
         return ShortUrl::create(
             ShortUrlCreation::fromRawData(
-                ['domain' => $domain->getAuthority(), 'apiKey' => $apiKey, 'longUrl' => 'foo'],
+                ['domain' => $domain->authority, 'apiKey' => $apiKey, 'longUrl' => 'https://foo'],
             ),
             new class ($domain) implements ShortUrlRelationResolverInterface {
                 public function __construct(private Domain $domain)
                 {
                 }
 
-                public function resolveDomain(?string $domain): ?Domain
+                public function resolveDomain(string|null $domain): Domain
                 {
                     return $this->domain;
                 }

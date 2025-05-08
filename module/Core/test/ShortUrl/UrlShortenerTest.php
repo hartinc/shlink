@@ -5,7 +5,10 @@ declare(strict_types=1);
 namespace ShlinkioTest\Shlink\Core\ShortUrl;
 
 use Cake\Chronos\Chronos;
-use Doctrine\ORM\EntityManager;
+use Doctrine\ORM\EntityManagerInterface;
+use Laminas\ServiceManager\Exception\ServiceNotFoundException;
+use PHPUnit\Framework\Attributes\DataProvider;
+use PHPUnit\Framework\Attributes\Test;
 use PHPUnit\Framework\MockObject\MockObject;
 use PHPUnit\Framework\TestCase;
 use Psr\EventDispatcher\EventDispatcherInterface;
@@ -14,54 +17,72 @@ use Shlinkio\Shlink\Core\ShortUrl\Entity\ShortUrl;
 use Shlinkio\Shlink\Core\ShortUrl\Helper\ShortCodeUniquenessHelperInterface;
 use Shlinkio\Shlink\Core\ShortUrl\Helper\ShortUrlTitleResolutionHelperInterface;
 use Shlinkio\Shlink\Core\ShortUrl\Model\ShortUrlCreation;
-use Shlinkio\Shlink\Core\ShortUrl\Repository\ShortUrlRepository;
+use Shlinkio\Shlink\Core\ShortUrl\Repository\ShortUrlRepositoryInterface;
 use Shlinkio\Shlink\Core\ShortUrl\Resolver\SimpleShortUrlRelationResolver;
 use Shlinkio\Shlink\Core\ShortUrl\UrlShortener;
 
 class UrlShortenerTest extends TestCase
 {
     private UrlShortener $urlShortener;
-    private MockObject & EntityManager $em;
+    private MockObject & EntityManagerInterface $em;
     private MockObject & ShortUrlTitleResolutionHelperInterface $titleResolutionHelper;
     private MockObject & ShortCodeUniquenessHelperInterface $shortCodeHelper;
+    private MockObject & EventDispatcherInterface $dispatcher;
+    private MockObject & ShortUrlRepositoryInterface $repo;
 
     protected function setUp(): void
     {
         $this->titleResolutionHelper = $this->createMock(ShortUrlTitleResolutionHelperInterface::class);
         $this->shortCodeHelper = $this->createMock(ShortCodeUniquenessHelperInterface::class);
 
-        // FIXME Should use the interface, but it doe snot define wrapInTransaction explicitly
-        $this->em = $this->createMock(EntityManager::class);
+        $this->em = $this->createMock(EntityManagerInterface::class);
         $this->em->method('persist')->willReturnCallback(fn (ShortUrl $shortUrl) => $shortUrl->setId('10'));
-        $this->em->method('wrapInTransaction')->with($this->isType('callable'))->willReturnCallback(
-            fn (callable $callback) => $callback(),
-        );
+        $this->em->method('wrapInTransaction')->willReturnCallback(fn (callable $callback) => $callback());
+
+        $this->dispatcher = $this->createMock(EventDispatcherInterface::class);
+        $this->repo = $this->createMock(ShortUrlRepositoryInterface::class);
 
         $this->urlShortener = new UrlShortener(
             $this->titleResolutionHelper,
             $this->em,
             new SimpleShortUrlRelationResolver(),
             $this->shortCodeHelper,
-            $this->createMock(EventDispatcherInterface::class),
+            $this->dispatcher,
+            $this->repo,
         );
     }
 
-    /** @test */
-    public function urlIsProperlyShortened(): void
+    #[Test, DataProvider('provideDispatchBehavior')]
+    public function urlIsProperlyShortened(bool $expectDispatchError, callable $dispatchBehavior): void
     {
         $longUrl = 'http://foobar.com/12345/hello?foo=bar';
         $meta = ShortUrlCreation::fromRawData(['longUrl' => $longUrl]);
-        $this->titleResolutionHelper->expects($this->once())->method('processTitleAndValidateUrl')->with(
+        $this->titleResolutionHelper->expects($this->once())->method('processTitle')->with(
             $meta,
         )->willReturnArgument(0);
         $this->shortCodeHelper->method('ensureShortCodeUniqueness')->willReturn(true);
+        $this->dispatcher->expects($this->once())->method('dispatch')->willReturnCallback($dispatchBehavior);
 
-        $shortUrl = $this->urlShortener->shorten($meta);
+        $result = $this->urlShortener->shorten($meta);
+        $thereIsError = false;
+        $result->onEventDispatchingError(function () use (&$thereIsError): void {
+            $thereIsError = true;
+        });
 
-        self::assertEquals($longUrl, $shortUrl->getLongUrl());
+        self::assertEquals($longUrl, $result->shortUrl->getLongUrl());
+        self::assertEquals($expectDispatchError, $thereIsError);
     }
 
-    /** @test */
+    public static function provideDispatchBehavior(): iterable
+    {
+        yield 'no dispatch error' => [false, static function (): void {
+        }];
+        yield 'dispatch error' => [true, static function (): void {
+            throw new ServiceNotFoundException();
+        }];
+    }
+
+    #[Test]
     public function exceptionIsThrownWhenNonUniqueSlugIsProvided(): void
     {
         $meta = ShortUrlCreation::fromRawData(
@@ -69,7 +90,7 @@ class UrlShortenerTest extends TestCase
         );
 
         $this->shortCodeHelper->expects($this->once())->method('ensureShortCodeUniqueness')->willReturn(false);
-        $this->titleResolutionHelper->expects($this->once())->method('processTitleAndValidateUrl')->with(
+        $this->titleResolutionHelper->expects($this->once())->method('processTitle')->with(
             $meta,
         )->willReturnArgument(0);
 
@@ -78,24 +99,19 @@ class UrlShortenerTest extends TestCase
         $this->urlShortener->shorten($meta);
     }
 
-    /**
-     * @test
-     * @dataProvider provideExistingShortUrls
-     */
+    #[Test, DataProvider('provideExistingShortUrls')]
     public function existingShortUrlIsReturnedWhenRequested(ShortUrlCreation $meta, ShortUrl $expected): void
     {
-        $repo = $this->createMock(ShortUrlRepository::class);
-        $repo->expects($this->once())->method('findOneMatching')->willReturn($expected);
-        $this->em->expects($this->once())->method('getRepository')->with(ShortUrl::class)->willReturn($repo);
-        $this->titleResolutionHelper->expects($this->never())->method('processTitleAndValidateUrl');
+        $this->repo->expects($this->once())->method('findOneMatching')->willReturn($expected);
+        $this->titleResolutionHelper->expects($this->never())->method('processTitle');
         $this->shortCodeHelper->method('ensureShortCodeUniqueness')->willReturn(true);
 
         $result = $this->urlShortener->shorten($meta);
 
-        self::assertSame($expected, $result);
+        self::assertSame($expected, $result->shortUrl);
     }
 
-    public function provideExistingShortUrls(): iterable
+    public static function provideExistingShortUrls(): iterable
     {
         $url = 'http://foo.com';
 

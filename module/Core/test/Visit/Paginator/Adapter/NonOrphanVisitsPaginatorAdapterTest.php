@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace ShlinkioTest\Shlink\Core\Visit\Paginator\Adapter;
 
+use PHPUnit\Framework\Attributes\DataProvider;
+use PHPUnit\Framework\Attributes\Test;
 use PHPUnit\Framework\MockObject\MockObject;
 use PHPUnit\Framework\TestCase;
 use Shlinkio\Shlink\Core\Visit\Entity\Visit;
@@ -31,7 +33,7 @@ class NonOrphanVisitsPaginatorAdapterTest extends TestCase
         $this->adapter = new NonOrphanVisitsPaginatorAdapter($this->repo, $this->params, $this->apiKey);
     }
 
-    /** @test */
+    #[Test]
     public function countDelegatesToRepository(): void
     {
         $expectedCount = 5;
@@ -47,12 +49,11 @@ class NonOrphanVisitsPaginatorAdapterTest extends TestCase
     /**
      * @param int<0, max> $limit
      * @param int<0, max> $offset
-     * @test
-     * @dataProvider provideLimitAndOffset
      */
+    #[Test, DataProvider('provideLimitAndOffset')]
     public function getSliceDelegatesToRepository(int $limit, int $offset): void
     {
-        $visitor = Visitor::emptyInstance();
+        $visitor = Visitor::empty();
         $list = [Visit::forRegularNotFound($visitor), Visit::forInvalidShortUrl($visitor)];
         $this->repo->expects($this->once())->method('findNonOrphanVisits')->with(new VisitsListFiltering(
             $this->params->dateRange,
@@ -67,7 +68,7 @@ class NonOrphanVisitsPaginatorAdapterTest extends TestCase
         self::assertEquals($list, $result);
     }
 
-    public function provideLimitAndOffset(): iterable
+    public static function provideLimitAndOffset(): iterable
     {
         yield [1, 5];
         yield [10, 4];

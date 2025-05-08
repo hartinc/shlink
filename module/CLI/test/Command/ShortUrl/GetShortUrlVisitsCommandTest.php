@@ -6,6 +6,7 @@ namespace ShlinkioTest\Shlink\CLI\Command\ShortUrl;
 
 use Cake\Chronos\Chronos;
 use Pagerfanta\Adapter\ArrayAdapter;
+use PHPUnit\Framework\Attributes\Test;
 use PHPUnit\Framework\MockObject\MockObject;
 use PHPUnit\Framework\TestCase;
 use Shlinkio\Shlink\CLI\Command\ShortUrl\GetShortUrlVisitsCommand;
@@ -19,7 +20,7 @@ use Shlinkio\Shlink\Core\Visit\Model\Visitor;
 use Shlinkio\Shlink\Core\Visit\Model\VisitsParams;
 use Shlinkio\Shlink\Core\Visit\VisitsStatsHelperInterface;
 use Shlinkio\Shlink\IpGeolocation\Model\Location;
-use ShlinkioTest\Shlink\CLI\CliTestUtilsTrait;
+use ShlinkioTest\Shlink\CLI\Util\CliTestUtils;
 use Symfony\Component\Console\Tester\CommandTester;
 
 use function Shlinkio\Shlink\Common\buildDateRange;
@@ -27,8 +28,6 @@ use function sprintf;
 
 class GetShortUrlVisitsCommandTest extends TestCase
 {
-    use CliTestUtilsTrait;
-
     private CommandTester $commandTester;
     private MockObject & VisitsStatsHelperInterface $visitsHelper;
 
@@ -36,10 +35,10 @@ class GetShortUrlVisitsCommandTest extends TestCase
     {
         $this->visitsHelper = $this->createMock(VisitsStatsHelperInterface::class);
         $command = new GetShortUrlVisitsCommand($this->visitsHelper);
-        $this->commandTester = $this->testerForCommand($command);
+        $this->commandTester = CliTestUtils::testerForCommand($command);
     }
 
-    /** @test */
+    #[Test]
     public function noDateFlagsTriesToListWithoutDateRange(): void
     {
         $shortCode = 'abc123';
@@ -51,7 +50,7 @@ class GetShortUrlVisitsCommandTest extends TestCase
         $this->commandTester->execute(['shortCode' => $shortCode]);
     }
 
-    /** @test */
+    #[Test]
     public function providingDateFlagsTheListGetsFiltered(): void
     {
         $shortCode = 'abc123';
@@ -69,7 +68,7 @@ class GetShortUrlVisitsCommandTest extends TestCase
         ]);
     }
 
-    /** @test */
+    #[Test]
     public function providingInvalidDatesPrintsWarning(): void
     {
         $shortCode = 'abc123';
@@ -91,10 +90,10 @@ class GetShortUrlVisitsCommandTest extends TestCase
         );
     }
 
-    /** @test */
+    #[Test]
     public function outputIsProperlyGenerated(): void
     {
-        $visit = Visit::forValidShortUrl(ShortUrl::createEmpty(), new Visitor('bar', 'foo', '', ''))->locate(
+        $visit = Visit::forValidShortUrl(ShortUrl::createFake(), Visitor::fromParams('bar', 'foo', ''))->locate(
             VisitLocation::fromGeolocation(new Location('', 'Spain', '', 'Madrid', 0, 0, '')),
         );
         $shortCode = 'abc123';
@@ -111,7 +110,7 @@ class GetShortUrlVisitsCommandTest extends TestCase
             +---------+---------------------------+------------+---------+--------+
             | Referer | Date                      | User agent | Country | City   |
             +---------+---------------------------+------------+---------+--------+
-            | foo     | {$visit->getDate()->toAtomString()} | bar        | Spain   | Madrid |
+            | foo     | {$visit->date->toAtomString()} | bar        | Spain   | Madrid |
             +---------+---------------------------+------------+---------+--------+
 
             OUTPUT,

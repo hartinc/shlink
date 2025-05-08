@@ -5,16 +5,16 @@ declare(strict_types=1);
 namespace ShlinkioApiTest\Shlink\Rest\Action;
 
 use GuzzleHttp\RequestOptions;
+use PHPUnit\Framework\Attributes\DataProvider;
+use PHPUnit\Framework\Attributes\Test;
+use Shlinkio\Shlink\Core\Domain\Entity\Domain;
 use Shlinkio\Shlink\TestUtils\ApiTest\ApiTestCase;
 
 use function sprintf;
 
 class DomainVisitsTest extends ApiTestCase
 {
-    /**
-     * @test
-     * @dataProvider provideDomains
-     */
+    #[Test, DataProvider('provideDomains')]
     public function expectedVisitsAreReturned(
         string $apiKey,
         string $domain,
@@ -32,20 +32,17 @@ class DomainVisitsTest extends ApiTestCase
         self::assertCount($expectedVisitsAmount, $payload['visits']['data']);
     }
 
-    public function provideDomains(): iterable
+    public static function provideDomains(): iterable
     {
         yield 'example.com with admin API key' => ['valid_api_key', 'example.com', false, 0];
-        yield 'DEFAULT with admin API key' => ['valid_api_key', 'DEFAULT', false, 7];
-        yield 'DEFAULT with admin API key and no bots' => ['valid_api_key', 'DEFAULT', true, 6];
-        yield 'DEFAULT with domain API key' => ['domain_api_key', 'DEFAULT', false, 0];
-        yield 'DEFAULT with author API key' => ['author_api_key', 'DEFAULT', false, 5];
-        yield 'DEFAULT with author API key and no bots' => ['author_api_key', 'DEFAULT', true, 4];
+        yield 'DEFAULT with admin API key' => ['valid_api_key', Domain::DEFAULT_AUTHORITY, false, 7];
+        yield 'DEFAULT with admin API key and no bots' => ['valid_api_key', Domain::DEFAULT_AUTHORITY, true, 6];
+        yield 'DEFAULT with domain API key' => ['domain_api_key', Domain::DEFAULT_AUTHORITY, false, 0];
+        yield 'DEFAULT with author API key' => ['author_api_key', Domain::DEFAULT_AUTHORITY, false, 5];
+        yield 'DEFAULT with author API key and no bots' => ['author_api_key', Domain::DEFAULT_AUTHORITY, true, 4];
     }
 
-    /**
-     * @test
-     * @dataProvider provideApiKeysAndTags
-     */
+    #[Test, DataProvider('provideApiKeysAndTags')]
     public function notFoundErrorIsReturnedForInvalidTags(string $apiKey, string $domain): void
     {
         $resp = $this->callApiWithKey(self::METHOD_GET, sprintf('/domains/%s/visits', $domain), [], $apiKey);
@@ -53,23 +50,20 @@ class DomainVisitsTest extends ApiTestCase
 
         self::assertEquals(self::STATUS_NOT_FOUND, $resp->getStatusCode());
         self::assertEquals(self::STATUS_NOT_FOUND, $payload['status']);
-        self::assertEquals('DOMAIN_NOT_FOUND', $payload['type']);
+        self::assertEquals('https://shlink.io/api/error/domain-not-found', $payload['type']);
         self::assertEquals(sprintf('Domain with authority "%s" could not be found', $domain), $payload['detail']);
         self::assertEquals('Domain not found', $payload['title']);
         self::assertEquals($domain, $payload['authority']);
     }
 
-    public function provideApiKeysAndTags(): iterable
+    public static function provideApiKeysAndTags(): iterable
     {
         yield 'admin API key with invalid domain' => ['valid_api_key', 'invalid_domain.com'];
         yield 'domain API key with not-owned valid domain' => ['domain_api_key', 'this_domain_is_detached.com'];
         yield 'author API key with valid domain not used in URLs' => ['author_api_key', 'this_domain_is_detached.com'];
     }
 
-    /**
-     * @test
-     * @dataProvider provideApiVersions
-     */
+    #[Test, DataProvider('provideApiVersions')]
     public function expectedNotFoundTypeIsReturnedForApiVersion(string $version, string $expectedType): void
     {
         $resp = $this->callApiWithKey(self::METHOD_GET, sprintf('/rest/v%s/domains/invalid.com/visits', $version));
@@ -78,10 +72,10 @@ class DomainVisitsTest extends ApiTestCase
         self::assertEquals($expectedType, $payload['type']);
     }
 
-    public function provideApiVersions(): iterable
+    public static function provideApiVersions(): iterable
     {
-        yield ['1', 'DOMAIN_NOT_FOUND'];
-        yield ['2', 'DOMAIN_NOT_FOUND'];
+        yield ['1', 'https://shlink.io/api/error/domain-not-found'];
+        yield ['2', 'https://shlink.io/api/error/domain-not-found'];
         yield ['3', 'https://shlink.io/api/error/domain-not-found'];
     }
 }

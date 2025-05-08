@@ -4,41 +4,41 @@ declare(strict_types=1);
 
 namespace ShlinkioApiTest\Shlink\Rest\Action;
 
+use PHPUnit\Framework\Attributes\DataProvider;
+use PHPUnit\Framework\Attributes\DataProviderExternal;
+use PHPUnit\Framework\Attributes\Test;
 use Shlinkio\Shlink\TestUtils\ApiTest\ApiTestCase;
-use ShlinkioApiTest\Shlink\Rest\Utils\NotFoundUrlHelpersTrait;
+use ShlinkioApiTest\Shlink\Rest\Utils\ApiTestDataProviders;
+use ShlinkioApiTest\Shlink\Rest\Utils\UrlBuilder;
 
 use function sprintf;
 
 class DeleteShortUrlTest extends ApiTestCase
 {
-    use NotFoundUrlHelpersTrait;
-
-    /**
-     * @test
-     * @dataProvider provideInvalidUrls
-     */
+    #[Test, DataProviderExternal(ApiTestDataProviders::class, 'invalidUrlsProvider')]
     public function notFoundErrorIsReturnWhenDeletingInvalidUrl(
         string $shortCode,
-        ?string $domain,
+        string|null $domain,
         string $expectedDetail,
         string $apiKey,
     ): void {
-        $resp = $this->callApiWithKey(self::METHOD_DELETE, $this->buildShortUrlPath($shortCode, $domain), [], $apiKey);
+        $resp = $this->callApiWithKey(
+            self::METHOD_DELETE,
+            UrlBuilder::buildShortUrlPath($shortCode, $domain),
+            apiKey: $apiKey,
+        );
         $payload = $this->getJsonResponsePayload($resp);
 
         self::assertEquals(self::STATUS_NOT_FOUND, $resp->getStatusCode());
         self::assertEquals(self::STATUS_NOT_FOUND, $payload['status']);
-        self::assertEquals('INVALID_SHORTCODE', $payload['type']);
+        self::assertEquals('https://shlink.io/api/error/short-url-not-found', $payload['type']);
         self::assertEquals($expectedDetail, $payload['detail']);
         self::assertEquals('Short URL not found', $payload['title']);
         self::assertEquals($shortCode, $payload['shortCode']);
         self::assertEquals($domain, $payload['domain'] ?? null);
     }
 
-    /**
-     * @test
-     * @dataProvider provideApiVersions
-     */
+    #[Test, DataProvider('provideApiVersions')]
     public function expectedTypeIsReturnedBasedOnApiVersion(string $version, string $expectedType): void
     {
         $resp = $this->callApiWithKey(
@@ -50,14 +50,14 @@ class DeleteShortUrlTest extends ApiTestCase
         self::assertEquals($expectedType, $payload['type']);
     }
 
-    public function provideApiVersions(): iterable
+    public static function provideApiVersions(): iterable
     {
-        yield ['1', 'INVALID_SHORTCODE'];
-        yield ['2', 'INVALID_SHORTCODE'];
+        yield ['1', 'https://shlink.io/api/error/short-url-not-found'];
+        yield ['2', 'https://shlink.io/api/error/short-url-not-found'];
         yield ['3', 'https://shlink.io/api/error/short-url-not-found'];
     }
 
-    /** @test */
+    #[Test]
     public function properShortUrlIsDeletedWhenDomainIsProvided(): void
     {
         $fetchWithDomainBefore = $this->callApiWithKey(self::METHOD_GET, '/short-urls/ghi789?domain=example.com');

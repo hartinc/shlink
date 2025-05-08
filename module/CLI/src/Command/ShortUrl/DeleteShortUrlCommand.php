@@ -4,12 +4,11 @@ declare(strict_types=1);
 
 namespace Shlinkio\Shlink\CLI\Command\ShortUrl;
 
-use Shlinkio\Shlink\CLI\Util\ExitCodes;
+use Shlinkio\Shlink\CLI\Input\ShortUrlIdentifierInput;
 use Shlinkio\Shlink\Core\Exception;
 use Shlinkio\Shlink\Core\ShortUrl\DeleteShortUrlServiceInterface;
 use Shlinkio\Shlink\Core\ShortUrl\Model\ShortUrlIdentifier;
 use Symfony\Component\Console\Command\Command;
-use Symfony\Component\Console\Input\InputArgument;
 use Symfony\Component\Console\Input\InputInterface;
 use Symfony\Component\Console\Input\InputOption;
 use Symfony\Component\Console\Output\OutputInterface;
@@ -19,11 +18,18 @@ use function sprintf;
 
 class DeleteShortUrlCommand extends Command
 {
-    public const NAME = 'short-url:delete';
+    public const string NAME = 'short-url:delete';
+
+    private readonly ShortUrlIdentifierInput $shortUrlIdentifierInput;
 
     public function __construct(private readonly DeleteShortUrlServiceInterface $deleteShortUrlService)
     {
         parent::__construct();
+        $this->shortUrlIdentifierInput = new ShortUrlIdentifierInput(
+            $this,
+            shortCodeDesc: 'The short code for the short URL to be deleted',
+            domainDesc: 'The domain if the short code does not belong to the default one',
+        );
     }
 
     protected function configure(): void
@@ -31,34 +37,27 @@ class DeleteShortUrlCommand extends Command
         $this
             ->setName(self::NAME)
             ->setDescription('Deletes a short URL')
-            ->addArgument('shortCode', InputArgument::REQUIRED, 'The short code for the short URL to be deleted')
             ->addOption(
                 'ignore-threshold',
                 'i',
                 InputOption::VALUE_NONE,
                 'Ignores the safety visits threshold check, which could make short URLs with many visits to be '
                 . 'accidentally deleted',
-            )
-            ->addOption(
-                'domain',
-                'd',
-                InputOption::VALUE_REQUIRED,
-                'The domain if the short code does not belong to the default one',
             );
     }
 
-    protected function execute(InputInterface $input, OutputInterface $output): ?int
+    protected function execute(InputInterface $input, OutputInterface $output): int
     {
         $io = new SymfonyStyle($input, $output);
-        $identifier = ShortUrlIdentifier::fromCli($input);
+        $identifier = $this->shortUrlIdentifierInput->toShortUrlIdentifier($input);
         $ignoreThreshold = $input->getOption('ignore-threshold');
 
         try {
             $this->runDelete($io, $identifier, $ignoreThreshold);
-            return ExitCodes::EXIT_SUCCESS;
+            return self::SUCCESS;
         } catch (Exception\ShortUrlNotFoundException $e) {
             $io->error($e->getMessage());
-            return ExitCodes::EXIT_FAILURE;
+            return self::FAILURE;
         } catch (Exception\DeleteShortUrlException $e) {
             return $this->retry($io, $identifier, $e->getMessage());
         }
@@ -75,7 +74,7 @@ class DeleteShortUrlCommand extends Command
             $io->warning('Short URL was not deleted.');
         }
 
-        return $forceDelete ? ExitCodes::EXIT_SUCCESS : ExitCodes::EXIT_WARNING;
+        return $forceDelete ? self::SUCCESS : self::INVALID;
     }
 
     private function runDelete(SymfonyStyle $io, ShortUrlIdentifier $identifier, bool $ignoreThreshold): void

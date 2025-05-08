@@ -5,24 +5,21 @@ declare(strict_types=1);
 namespace ShlinkioApiTest\Shlink\Rest\Action;
 
 use Cake\Chronos\Chronos;
-use DMS\PHPUnitExtensions\ArraySubset\ArraySubsetAsserts;
 use GuzzleHttp\Psr7\Query;
 use GuzzleHttp\RequestOptions;
 use Laminas\Diactoros\Uri;
+use PHPUnit\Framework\Attributes\DataProvider;
+use PHPUnit\Framework\Attributes\DataProviderExternal;
+use PHPUnit\Framework\Attributes\Test;
 use Shlinkio\Shlink\TestUtils\ApiTest\ApiTestCase;
-use ShlinkioApiTest\Shlink\Rest\Utils\NotFoundUrlHelpersTrait;
+use ShlinkioApiTest\Shlink\Rest\Utils\ApiTestDataProviders;
+use ShlinkioApiTest\Shlink\Rest\Utils\UrlBuilder;
 
 use function sprintf;
 
 class EditShortUrlTest extends ApiTestCase
 {
-    use ArraySubsetAsserts;
-    use NotFoundUrlHelpersTrait;
-
-    /**
-     * @test
-     * @dataProvider provideMeta
-     */
+    #[Test, DataProvider('provideMeta')]
     public function metadataCanBeReset(array $meta): void
     {
         $shortCode = 'abc123';
@@ -47,17 +44,24 @@ class EditShortUrlTest extends ApiTestCase
         self::assertArraySubset($meta, $metaAfterEditing);
     }
 
-    public function provideMeta(): iterable
+    private static function assertArraySubset(array $a, array $b): void
+    {
+        foreach ($a as $key => $expectedValue) {
+            self::assertEquals($expectedValue, $b[$key]);
+        }
+    }
+
+    public static function provideMeta(): iterable
     {
         $now = Chronos::now();
 
-        yield [['validSince' => $now->addMonth()->toAtomString()]];
-        yield [['validUntil' => $now->subMonth()->toAtomString()]];
+        yield [['validSince' => $now->addMonths(1)->toAtomString()]];
+        yield [['validUntil' => $now->subMonths(1)->toAtomString()]];
         yield [['maxVisits' => 20]];
-        yield [['validUntil' => $now->addYear()->toAtomString(), 'maxVisits' => 100]];
+        yield [['validUntil' => $now->addYears(1)->toAtomString(), 'maxVisits' => 100]];
         yield [[
-            'validSince' => $now->subYear()->toAtomString(),
-            'validUntil' => $now->addYear()->toAtomString(),
+            'validSince' => $now->subYears(1)->toAtomString(),
+            'validUntil' => $now->addYears(1)->toAtomString(),
             'maxVisits' => 100,
         ]];
     }
@@ -71,57 +75,39 @@ class EditShortUrlTest extends ApiTestCase
         return $matchingShortUrl['meta'] ?? [];
     }
 
-    /**
-     * @test
-     * @dataProvider provideLongUrls
-     */
-    public function longUrlCanBeEditedIfItIsValid(string $longUrl, int $expectedStatus, ?string $expectedError): void
+    public function longUrlCanBeEdited(): void
     {
         $shortCode = 'abc123';
         $url = sprintf('/short-urls/%s', $shortCode);
 
         $resp = $this->callApiWithKey(self::METHOD_PATCH, $url, [RequestOptions::JSON => [
-            'longUrl' => $longUrl,
-            'validateUrl' => true,
+            'longUrl' => 'https://shlink.io',
         ]]);
 
-        self::assertEquals($expectedStatus, $resp->getStatusCode());
-        if ($expectedError !== null) {
-            $payload = $this->getJsonResponsePayload($resp);
-            self::assertEquals($expectedError, $payload['type']);
-        }
+        self::assertEquals(self::STATUS_OK, $resp->getStatusCode());
     }
 
-    public function provideLongUrls(): iterable
-    {
-        yield 'valid URL' => ['https://shlink.io', self::STATUS_OK, null];
-        yield 'invalid URL' => ['htt:foo', self::STATUS_BAD_REQUEST, 'INVALID_URL'];
-    }
-
-    /**
-     * @test
-     * @dataProvider provideInvalidUrls
-     */
+    #[Test, DataProviderExternal(ApiTestDataProviders::class, 'invalidUrlsProvider')]
     public function tryingToEditInvalidUrlReturnsNotFoundError(
         string $shortCode,
-        ?string $domain,
+        string|null $domain,
         string $expectedDetail,
         string $apiKey,
     ): void {
-        $url = $this->buildShortUrlPath($shortCode, $domain);
+        $url = UrlBuilder::buildShortUrlPath($shortCode, $domain);
         $resp = $this->callApiWithKey(self::METHOD_PATCH, $url, [RequestOptions::JSON => []], $apiKey);
         $payload = $this->getJsonResponsePayload($resp);
 
         self::assertEquals(self::STATUS_NOT_FOUND, $resp->getStatusCode());
         self::assertEquals(self::STATUS_NOT_FOUND, $payload['status']);
-        self::assertEquals('INVALID_SHORTCODE', $payload['type']);
+        self::assertEquals('https://shlink.io/api/error/short-url-not-found', $payload['type']);
         self::assertEquals($expectedDetail, $payload['detail']);
         self::assertEquals('Short URL not found', $payload['title']);
         self::assertEquals($shortCode, $payload['shortCode']);
         self::assertEquals($domain, $payload['domain'] ?? null);
     }
 
-    /** @test */
+    #[Test]
     public function providingInvalidDataReturnsBadRequest(): void
     {
         $expectedDetail = 'Provided data is not valid';
@@ -133,16 +119,13 @@ class EditShortUrlTest extends ApiTestCase
 
         self::assertEquals(self::STATUS_BAD_REQUEST, $resp->getStatusCode());
         self::assertEquals(self::STATUS_BAD_REQUEST, $payload['status']);
-        self::assertEquals('INVALID_ARGUMENT', $payload['type']);
+        self::assertEquals('https://shlink.io/api/error/invalid-data', $payload['type']);
         self::assertEquals($expectedDetail, $payload['detail']);
         self::assertEquals('Invalid data', $payload['title']);
     }
 
-    /**
-     * @test
-     * @dataProvider provideDomains
-     */
-    public function metadataIsEditedOnProperShortUrlBasedOnDomain(?string $domain, string $expectedUrl): void
+    #[Test, DataProvider('provideDomains')]
+    public function metadataIsEditedOnProperShortUrlBasedOnDomain(string|null $domain, string $expectedUrl): void
     {
         $shortCode = 'ghi789';
         $url = new Uri(sprintf('/short-urls/%s', $shortCode));
@@ -154,7 +137,7 @@ class EditShortUrlTest extends ApiTestCase
         $editResp = $this->callApiWithKey(self::METHOD_PATCH, (string) $url, [RequestOptions::JSON => [
             'maxVisits' => 100,
         ]]);
-        $editedShortUrl = $this->getJsonResponsePayload($this->callApiWithKey(self::METHOD_GET, (string) $url));
+        $editedShortUrl = $this->getJsonResponsePayload($editResp);
 
         self::assertEquals(self::STATUS_OK, $editResp->getStatusCode());
         self::assertEquals($domain, $editedShortUrl['domain']);
@@ -162,7 +145,7 @@ class EditShortUrlTest extends ApiTestCase
         self::assertEquals(100, $editedShortUrl['meta']['maxVisits'] ?? null);
     }
 
-    public function provideDomains(): iterable
+    public static function provideDomains(): iterable
     {
         yield 'domain' => [
             'example.com',

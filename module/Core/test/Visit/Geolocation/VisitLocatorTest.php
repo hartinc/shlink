@@ -6,6 +6,8 @@ namespace ShlinkioTest\Shlink\Core\Visit\Geolocation;
 
 use Doctrine\ORM\EntityManager;
 use Exception;
+use PHPUnit\Framework\Attributes\DataProvider;
+use PHPUnit\Framework\Attributes\Test;
 use PHPUnit\Framework\MockObject\MockObject;
 use PHPUnit\Framework\TestCase;
 use Shlinkio\Shlink\Core\Exception\IpCannotBeLocatedException;
@@ -15,12 +17,12 @@ use Shlinkio\Shlink\Core\Visit\Entity\VisitLocation;
 use Shlinkio\Shlink\Core\Visit\Geolocation\VisitGeolocationHelperInterface;
 use Shlinkio\Shlink\Core\Visit\Geolocation\VisitLocator;
 use Shlinkio\Shlink\Core\Visit\Model\Visitor;
-use Shlinkio\Shlink\Core\Visit\Repository\VisitRepositoryInterface;
+use Shlinkio\Shlink\Core\Visit\Repository\VisitIterationRepositoryInterface;
 use Shlinkio\Shlink\IpGeolocation\Model\Location;
 
+use function array_map;
 use function count;
 use function floor;
-use function Functional\map;
 use function range;
 use function sprintf;
 
@@ -28,29 +30,30 @@ class VisitLocatorTest extends TestCase
 {
     private VisitLocator $visitService;
     private MockObject & EntityManager $em;
-    private MockObject & VisitRepositoryInterface $repo;
+    private MockObject & VisitIterationRepositoryInterface $repo;
 
     protected function setUp(): void
     {
         $this->em = $this->createMock(EntityManager::class);
-        $this->repo = $this->createMock(VisitRepositoryInterface::class);
-        $this->em->method('getRepository')->with(Visit::class)->willReturn($this->repo);
+        $this->repo = $this->createMock(VisitIterationRepositoryInterface::class);
 
-        $this->visitService = new VisitLocator($this->em);
+        $this->visitService = new VisitLocator($this->em, $this->repo);
     }
 
     /**
-     * @test
-     * @dataProvider provideMethodNames
+     * @param non-empty-string $expectedRepoMethodName
      */
+    #[Test, DataProvider('provideMethodNames')]
     public function locateVisitsIteratesAndLocatesExpectedVisits(
         string $serviceMethodName,
         string $expectedRepoMethodName,
     ): void {
-        $unlocatedVisits = map(
+        $unlocatedVisits = array_map(
+            fn (int $i) => Visit::forValidShortUrl(
+                ShortUrl::withLongUrl(sprintf('https://short_code_%s', $i)),
+                Visitor::empty(),
+            ),
             range(1, 200),
-            fn (int $i) =>
-                Visit::forValidShortUrl(ShortUrl::withLongUrl(sprintf('short_code_%s', $i)), Visitor::emptyInstance()),
         );
 
         $this->repo->expects($this->once())->method($expectedRepoMethodName)->willReturn($unlocatedVisits);
@@ -73,7 +76,7 @@ class VisitLocatorTest extends TestCase
         });
     }
 
-    public function provideMethodNames(): iterable
+    public static function provideMethodNames(): iterable
     {
         yield 'locateUnlocatedVisits' => ['locateUnlocatedVisits', 'findUnlocatedVisits'];
         yield 'locateVisitsWithEmptyLocation' => ['locateVisitsWithEmptyLocation', 'findVisitsWithEmptyLocation'];
@@ -81,16 +84,16 @@ class VisitLocatorTest extends TestCase
     }
 
     /**
-     * @test
-     * @dataProvider provideIsNonLocatableAddress
+     * @param non-empty-string $expectedRepoMethodName
      */
+    #[Test, DataProvider('provideIsNonLocatableAddress')]
     public function visitsWhichCannotBeLocatedAreIgnoredOrLocatedAsEmpty(
         string $serviceMethodName,
         string $expectedRepoMethodName,
         bool $isNonLocatableAddress,
     ): void {
         $unlocatedVisits = [
-            Visit::forValidShortUrl(ShortUrl::withLongUrl('foo'), Visitor::emptyInstance()),
+            Visit::forValidShortUrl(ShortUrl::withLongUrl('https://foo'), Visitor::empty()),
         ];
 
         $this->repo->expects($this->once())->method($expectedRepoMethodName)->willReturn($unlocatedVisits);
@@ -103,7 +106,7 @@ class VisitLocatorTest extends TestCase
 
         $this->visitService->{$serviceMethodName}(
             new class ($isNonLocatableAddress) implements VisitGeolocationHelperInterface {
-                public function __construct(private bool $isNonLocatableAddress)
+                public function __construct(private readonly bool $isNonLocatableAddress)
                 {
                 }
 
@@ -121,7 +124,7 @@ class VisitLocatorTest extends TestCase
         );
     }
 
-    public function provideIsNonLocatableAddress(): iterable
+    public static function provideIsNonLocatableAddress(): iterable
     {
         yield 'locateUnlocatedVisits - locatable address' => ['locateUnlocatedVisits', 'findUnlocatedVisits', false];
         yield 'locateUnlocatedVisits - non-locatable address' => ['locateUnlocatedVisits', 'findUnlocatedVisits', true];

@@ -4,41 +4,40 @@ declare(strict_types=1);
 
 namespace ShlinkioTest\Shlink\CLI\Command\Db;
 
+use PHPUnit\Framework\Attributes\Test;
 use PHPUnit\Framework\MockObject\MockObject;
 use PHPUnit\Framework\TestCase;
 use Shlinkio\Shlink\CLI\Command\Db\MigrateDatabaseCommand;
 use Shlinkio\Shlink\CLI\Util\ProcessRunnerInterface;
-use ShlinkioTest\Shlink\CLI\CliTestUtilsTrait;
+use ShlinkioTest\Shlink\CLI\Util\CliTestUtils;
 use Symfony\Component\Console\Output\OutputInterface;
 use Symfony\Component\Console\Tester\CommandTester;
 use Symfony\Component\Lock\LockFactory;
-use Symfony\Component\Lock\LockInterface;
+use Symfony\Component\Lock\SharedLockInterface;
 use Symfony\Component\Process\PhpExecutableFinder;
 
 class MigrateDatabaseCommandTest extends TestCase
 {
-    use CliTestUtilsTrait;
-
     private CommandTester $commandTester;
     private MockObject & ProcessRunnerInterface $processHelper;
 
     protected function setUp(): void
     {
         $locker = $this->createMock(LockFactory::class);
-        $lock = $this->createMock(LockInterface::class);
-        $lock->method('acquire')->withAnyParameters()->willReturn(true);
-        $locker->method('createLock')->withAnyParameters()->willReturn($lock);
+        $lock = $this->createMock(SharedLockInterface::class);
+        $lock->method('acquire')->willReturn(true);
+        $locker->method('createLock')->willReturn($lock);
 
         $phpExecutableFinder = $this->createMock(PhpExecutableFinder::class);
-        $phpExecutableFinder->method('find')->with($this->isFalse())->willReturn('/usr/local/bin/php');
+        $phpExecutableFinder->method('find')->willReturn('/usr/local/bin/php');
 
         $this->processHelper = $this->createMock(ProcessRunnerInterface::class);
 
         $command = new MigrateDatabaseCommand($locker, $this->processHelper, $phpExecutableFinder);
-        $this->commandTester = $this->testerForCommand($command);
+        $this->commandTester = CliTestUtils::testerForCommand($command);
     }
 
-    /** @test */
+    #[Test]
     public function migrationsCommandIsRunWithProperVerbosity(): void
     {
         $this->processHelper->expects($this->once())->method('run')->with($this->isInstanceOf(OutputInterface::class), [

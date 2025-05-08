@@ -23,15 +23,19 @@ return static function (ClassMetadata $metadata, array $emConfig): void {
             ->option('unsigned', true)
             ->build();
 
-    fieldWithUtf8Charset($builder->createField('longUrl', Types::STRING), $emConfig)
-            ->columnName('original_url')
+    fieldWithUtf8Charset($builder->createField('longUrl', Types::TEXT), $emConfig)
+            ->columnName('original_url') // Rename to long_url some day? ¯\_(ツ)_/¯
             ->length(2048)
             ->build();
 
-    fieldWithUtf8Charset($builder->createField('shortCode', Types::STRING), $emConfig, 'bin')
+    $shortCodeField = fieldWithUtf8Charset($builder->createField('shortCode', Types::STRING), $emConfig, 'bin')
             ->columnName('short_code')
-            ->length(255)
-            ->build();
+            ->length(255);
+    if (($emConfig['connection']['driver'] ?? null) === 'pdo_sqlsrv') {
+        // Make sure a case-sensitive charset is set in short code for Microsoft SQL Server
+        $shortCodeField->option('collation', 'Latin1_General_CS_AS');
+    }
+    $shortCodeField->build();
 
     $builder->createField('dateCreated', ChronosDateTimeType::CHRONOS_DATETIME)
             ->columnName('date_created')
@@ -67,20 +71,25 @@ return static function (ClassMetadata $metadata, array $emConfig): void {
             ->fetchExtraLazy()
             ->build();
 
+    $builder->createOneToMany('visitsCounts', Visit\Entity\ShortUrlVisitsCount::class)
+            ->mappedBy('shortUrl')
+            ->fetchExtraLazy() // TODO Check if this makes sense
+            ->build();
+
     $builder->createManyToMany('tags', Tag\Entity\Tag::class)
             ->setJoinTable(determineTableName('short_urls_in_tags', $emConfig))
-            ->addInverseJoinColumn('tag_id', 'id', true, false, 'CASCADE')
-            ->addJoinColumn('short_url_id', 'id', true, false, 'CASCADE')
+            ->addInverseJoinColumn('tag_id', 'id', onDelete: 'CASCADE')
+            ->addJoinColumn('short_url_id', 'id', onDelete: 'CASCADE')
             ->setOrderBy(['name' => 'ASC'])
             ->build();
 
     $builder->createManyToOne('domain', Domain\Entity\Domain::class)
-            ->addJoinColumn('domain_id', 'id', true, false, 'RESTRICT')
+            ->addJoinColumn('domain_id', 'id', onDelete: 'RESTRICT')
             ->cascadePersist()
             ->build();
 
     $builder->createManyToOne('authorApiKey', ApiKey::class)
-            ->addJoinColumn('author_api_key_id', 'id', true, false, 'SET NULL')
+            ->addJoinColumn('author_api_key_id', 'id', onDelete: 'SET NULL')
             ->build();
 
     $builder->addUniqueConstraint(['short_code', 'domain_id'], 'unique_short_code_plus_domain');
@@ -104,5 +113,10 @@ return static function (ClassMetadata $metadata, array $emConfig): void {
     $builder->createField('forwardQuery', Types::BOOLEAN)
             ->columnName('forward_query')
             ->option('default', true)
+            ->build();
+
+    $builder->createOneToMany('redirectRules', RedirectRule\Entity\ShortUrlRedirectRule::class)
+            ->mappedBy('shortUrl')
+            ->fetchExtraLazy()
             ->build();
 };

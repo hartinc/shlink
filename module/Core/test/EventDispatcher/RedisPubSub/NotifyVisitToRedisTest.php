@@ -7,13 +7,15 @@ namespace ShlinkioTest\Shlink\Core\EventDispatcher\RedisPubSub;
 use Doctrine\ORM\EntityManagerInterface;
 use DomainException;
 use Exception;
+use PHPUnit\Framework\Attributes\DataProvider;
+use PHPUnit\Framework\Attributes\Test;
 use PHPUnit\Framework\MockObject\MockObject;
 use PHPUnit\Framework\TestCase;
 use Psr\Log\LoggerInterface;
 use RuntimeException;
 use Shlinkio\Shlink\Common\UpdatePublishing\PublishingHelperInterface;
 use Shlinkio\Shlink\Common\UpdatePublishing\Update;
-use Shlinkio\Shlink\Core\EventDispatcher\Event\VisitLocated;
+use Shlinkio\Shlink\Core\EventDispatcher\Event\UrlVisited;
 use Shlinkio\Shlink\Core\EventDispatcher\PublishingUpdatesGeneratorInterface;
 use Shlinkio\Shlink\Core\EventDispatcher\RedisPubSub\NotifyVisitToRedis;
 use Shlinkio\Shlink\Core\Visit\Entity\Visit;
@@ -35,7 +37,7 @@ class NotifyVisitToRedisTest extends TestCase
         $this->logger = $this->createMock(LoggerInterface::class);
     }
 
-    /** @test */
+    #[Test]
     public function doesNothingWhenTheFeatureIsNotEnabled(): void
     {
         $this->helper->expects($this->never())->method('publishUpdate');
@@ -43,18 +45,15 @@ class NotifyVisitToRedisTest extends TestCase
         $this->logger->expects($this->never())->method('warning');
         $this->logger->expects($this->never())->method('debug');
 
-        $this->createListener(false)(new VisitLocated('123'));
+        $this->createListener(false)(new UrlVisited('123'));
     }
 
-    /**
-     * @test
-     * @dataProvider provideExceptions
-     */
+    #[Test, DataProvider('provideExceptions')]
     public function printsDebugMessageInCaseOfError(Throwable $e): void
     {
         $visitId = '123';
         $this->em->expects($this->once())->method('find')->with(Visit::class, $visitId)->willReturn(
-            Visit::forBasePath(Visitor::emptyInstance()),
+            Visit::forBasePath(Visitor::empty()),
         );
         $this->updatesGenerator->expects($this->once())->method('newOrphanVisitUpdate')->with(
             $this->isInstanceOf(Visit::class),
@@ -65,10 +64,10 @@ class NotifyVisitToRedisTest extends TestCase
             ['e' => $e, 'name' => 'Redis pub/sub'],
         );
 
-        $this->createListener()(new VisitLocated($visitId));
+        $this->createListener()(new UrlVisited($visitId));
     }
 
-    public function provideExceptions(): iterable
+    public static function provideExceptions(): iterable
     {
         yield [new RuntimeException('RuntimeException Error')];
         yield [new Exception('Exception Error')];

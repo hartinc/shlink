@@ -4,21 +4,20 @@ declare(strict_types=1);
 
 namespace ShlinkioTest\Shlink\Core\Exception;
 
+use PHPUnit\Framework\Attributes\DataProvider;
+use PHPUnit\Framework\Attributes\Test;
 use PHPUnit\Framework\TestCase;
 use Shlinkio\Shlink\Core\Exception\DeleteShortUrlException;
 use Shlinkio\Shlink\Core\ShortUrl\Model\ShortUrlIdentifier;
 
-use function Functional\map;
+use function array_map;
 use function range;
 use function Shlinkio\Shlink\Core\generateRandomShortCode;
 use function sprintf;
 
 class DeleteShortUrlExceptionTest extends TestCase
 {
-    /**
-     * @test
-     * @dataProvider provideThresholds
-     */
+    #[Test, DataProvider('provideThresholds')]
     public function fromVisitsThresholdGeneratesMessageProperly(
         int $threshold,
         string $shortCode,
@@ -41,30 +40,30 @@ class DeleteShortUrlExceptionTest extends TestCase
         self::assertEquals(422, $e->getStatus());
     }
 
-    public function provideThresholds(): array
+    public static function provideThresholds(): array
     {
-        return map(range(5, 50, 5), function (int $number) {
+        return array_map(function (int $number) {
             return [$number, $shortCode = generateRandomShortCode(6), sprintf(
                 'Impossible to delete short URL with short code "%s", since it has more than "%s" visits.',
                 $shortCode,
                 $number,
             )];
-        });
+        }, range(5, 50, 5));
     }
 
-    /** @test */
+    #[Test]
     public function domainIsPartOfAdditionalWhenProvidedInIdentifier(): void
     {
         $e = DeleteShortUrlException::fromVisitsThreshold(
             10,
-            ShortUrlIdentifier::fromShortCodeAndDomain('abc123', 'doma.in'),
+            ShortUrlIdentifier::fromShortCodeAndDomain('abc123', 's.test'),
         );
-        $expectedMessage = 'Impossible to delete short URL with short code "abc123" for domain "doma.in", since it '
+        $expectedMessage = 'Impossible to delete short URL with short code "abc123" for domain "s.test", since it '
             . 'has more than "10" visits.';
 
         self::assertEquals([
             'shortCode' => 'abc123',
-            'domain' => 'doma.in',
+            'domain' => 's.test',
             'threshold' => 10,
         ], $e->getAdditionalData());
         self::assertEquals($expectedMessage, $e->getMessage());

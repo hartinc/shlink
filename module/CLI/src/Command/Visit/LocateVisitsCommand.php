@@ -6,7 +6,6 @@ namespace Shlinkio\Shlink\CLI\Command\Visit;
 
 use Shlinkio\Shlink\CLI\Command\Util\AbstractLockedCommand;
 use Shlinkio\Shlink\CLI\Command\Util\LockedCommandConfig;
-use Shlinkio\Shlink\CLI\Util\ExitCodes;
 use Shlinkio\Shlink\Common\Util\IpAddress;
 use Shlinkio\Shlink\Core\Exception\IpCannotBeLocatedException;
 use Shlinkio\Shlink\Core\Visit\Entity\Visit;
@@ -29,7 +28,7 @@ use function sprintf;
 
 class LocateVisitsCommand extends AbstractLockedCommand implements VisitGeolocationHelperInterface
 {
-    public const NAME = 'visit:locate';
+    public const string NAME = 'visit:locate';
 
     private SymfonyStyle $io;
 
@@ -116,14 +115,14 @@ class LocateVisitsCommand extends AbstractLockedCommand implements VisitGeolocat
             }
 
             $this->io->success('Finished locating visits');
-            return ExitCodes::EXIT_SUCCESS;
+            return self::SUCCESS;
         } catch (Throwable $e) {
             $this->io->error($e->getMessage());
             if ($this->io->isVerbose()) {
                 $this->getApplication()?->renderThrowable($e, $this->io);
             }
 
-            return ExitCodes::EXIT_FAILURE;
+            return self::FAILURE;
         }
     }
 
@@ -132,7 +131,7 @@ class LocateVisitsCommand extends AbstractLockedCommand implements VisitGeolocat
      */
     public function geolocateVisit(Visit $visit): Location
     {
-        $ipAddr = $visit->getRemoteAddr() ?? '?';
+        $ipAddr = $visit->remoteAddr ?? '?';
         $this->io->write(sprintf('Processing IP <fg=blue>%s</>', $ipAddr));
 
         try {
@@ -154,9 +153,9 @@ class LocateVisitsCommand extends AbstractLockedCommand implements VisitGeolocat
 
     public function onVisitLocated(VisitLocation $visitLocation, Visit $visit): void
     {
-        if (! $visitLocation->isEmpty()) {
-            $this->io->writeln(sprintf(' [<info>Address located in "%s"</info>]', $visitLocation->getCountryName()));
-        } elseif ($visit->hasRemoteAddr() && $visit->getRemoteAddr() !== IpAddress::LOCALHOST) {
+        if (! $visitLocation->isEmpty) {
+            $this->io->writeln(sprintf(' [<info>Address located in "%s"</info>]', $visitLocation->countryName));
+        } elseif ($visit->hasRemoteAddr() && $visit->remoteAddr !== IpAddress::LOCALHOST) {
             $this->io->writeln(' <comment>[Could not locate address]</comment>');
         }
     }
@@ -171,7 +170,7 @@ class LocateVisitsCommand extends AbstractLockedCommand implements VisitGeolocat
         $downloadDbCommand = $cliApp->find(DownloadGeoLiteDbCommand::NAME);
         $exitCode = $downloadDbCommand->run(new ArrayInput([]), $this->io);
 
-        if ($exitCode === ExitCodes::EXIT_FAILURE) {
+        if ($exitCode === self::FAILURE) {
             throw new RuntimeException('It is not possible to locate visits without a GeoLite2 db file.');
         }
     }

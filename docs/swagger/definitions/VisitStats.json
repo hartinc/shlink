@@ -1,14 +1,12 @@
 {
     "type": "object",
-    "required": ["visitsCount", "orphanVisitsCount"],
+    "required": ["nonOrphanVisits", "orphanVisits"],
     "properties": {
-        "visitsCount": {
-            "type": "number",
-            "description": "The total amount of visits received on any short URL."
+        "nonOrphanVisits": {
+            "$ref": "./VisitsSummary.json"
         },
-        "orphanVisitsCount": {
-            "type": "number",
-            "description": "The total amount of visits that could not be matched to a short URL (visits to the base URL, an invalid short URL or any other kind of 404)."
+        "orphanVisits": {
+            "$ref": "./VisitsSummary.json"
         }
     }
 }

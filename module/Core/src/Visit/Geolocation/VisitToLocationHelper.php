@@ -11,9 +11,9 @@ use Shlinkio\Shlink\IpGeolocation\Exception\WrongIpException;
 use Shlinkio\Shlink\IpGeolocation\Model\Location;
 use Shlinkio\Shlink\IpGeolocation\Resolver\IpLocationResolverInterface;
 
-class VisitToLocationHelper implements VisitToLocationHelperInterface
+readonly class VisitToLocationHelper implements VisitToLocationHelperInterface
 {
-    public function __construct(private readonly IpLocationResolverInterface $ipLocationResolver)
+    public function __construct(private IpLocationResolverInterface $ipLocationResolver)
     {
     }
 
@@ -26,7 +26,7 @@ class VisitToLocationHelper implements VisitToLocationHelperInterface
             throw IpCannotBeLocatedException::forEmptyAddress();
         }
 
-        $ipAddr = $visit->getRemoteAddr() ?? '';
+        $ipAddr = $visit->remoteAddr ?? '';
         if ($ipAddr === IpAddress::LOCALHOST) {
             throw IpCannotBeLocatedException::forLocalhost();
         }

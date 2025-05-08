@@ -116,9 +116,8 @@
                         "format": "date-time",
                         "description": "The date in which the short URL was created in ISO format."
                     },
-                    "visitsCount": {
-                        "type": "integer",
-                        "description": "The number of visits that this short URL has received."
+                    "visitsSummary": {
+                        "$ref": "#/components/schemas/VisitsSummary"
                     },
                     "tags": {
                         "type": "array",
@@ -142,14 +141,26 @@
                     "crawlable": {
                         "type": "boolean",
                         "description": "Tells if this URL will be included as 'Allow' in Shlink's robots.txt."
+                    },
+                    "forwardQuery": {
+                        "type": "boolean",
+                        "description": "Tells if this URL will forward the query params to the long URL when visited, as explained in [the docs](https://shlink.io/documentation/some-features/#query-params-forwarding)."
+                    },
+                    "hasRedirectRules": {
+                        "type": "boolean",
+                        "description": "Whether this short URL has redirect rules attached to it or not. Use [this endpoint](https://api-spec.shlink.io/#/Redirect%20rules/listShortUrlRedirectRules) to get the actual list of rules."
                     }
                 },
                 "example": {
                     "shortCode": "12C18",
-                    "shortUrl": "https://doma.in/12C18",
+                    "shortUrl": "https://s.test/12C18",
                     "longUrl": "https://store.steampowered.com",
                     "dateCreated": "2016-08-21T20:34:16+02:00",
-                    "visitsCount": 328,
+                    "visitsSummary": {
+                        "total": 328,
+                        "nonBots": 285,
+                        "bots": 43
+                    },
                     "tags": [
                         "games",
                         "tech"
@@ -161,7 +172,9 @@
                     },
                     "domain": "example.com",
                     "title": "The title",
-                    "crawlable": false
+                    "crawlable": false,
+                    "forwardQuery": false,
+                    "hasRedirectRules": true
                 }
             },
             "ShortUrlMeta": {
@@ -189,6 +202,24 @@
                     }
                 }
             },
+            "VisitsSummary": {
+                "type": "object",
+                "required": ["total", "nonBots", "bots"],
+                "properties": {
+                    "total": {
+                        "description": "The total amount of visits",
+                        "type": "number"
+                    },
+                    "nonBots": {
+                        "description": "The amount of visits which were not identified as bots",
+                        "type": "number"
+                    },
+                    "bots": {
+                        "description": "The amount of visits that were identified as potential bots",
+                        "type": "number"
+                    }
+                }
+            },
             "Visit": {
                 "type": "object",
                 "properties": {
@@ -211,6 +242,16 @@
                     "potentialBot": {
                         "type": "boolean",
                         "description": "Tells if Shlink thinks this visit comes potentially from a bot or crawler"
+                    },
+                    "visitedUrl": {
+                        "type": "string",
+                        "nullable": true,
+                        "description": "The originally visited URL that triggered the tracking of this visit"
+                    },
+                    "redirectUrl": {
+                        "type": "string",
+                        "nullable":  true,
+                        "description": "The URL to which the visitor was redirected, or null if a redirect did not occur, like for 404 requests or pixel tracking"
                     }
                 },
                 "example": {
@@ -226,7 +267,8 @@
                         "regionName": "California",
                         "timezone": "America/Los_Angeles"
                     },
-                    "potentialBot": false
+                    "potentialBot": false,
+                    "visitedUrl": "https://s.test"
                 }
             },
             "OrphanVisit": {
@@ -235,11 +277,6 @@
                     {
                         "type": "object",
                         "properties": {
-                            "visitedUrl": {
-                                "type": "string",
-                                "nullable": true,
-                                "description": "The originally visited URL that triggered the tracking of this visit"
-                            },
                             "type": {
                                 "type": "string",
                                 "enum": [
@@ -266,7 +303,7 @@
                         "timezone": "America/Los_Angeles"
                     },
                     "potentialBot": false,
-                    "visitedUrl": "https://doma.in",
+                    "visitedUrl": "https://s.test",
                     "type": "base_url"
                 }
             },

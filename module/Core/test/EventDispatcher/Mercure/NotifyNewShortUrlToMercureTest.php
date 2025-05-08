@@ -6,6 +6,7 @@ namespace ShlinkioTest\Shlink\Core\EventDispatcher\Mercure;
 
 use Doctrine\ORM\EntityManagerInterface;
 use Exception;
+use PHPUnit\Framework\Attributes\Test;
 use PHPUnit\Framework\MockObject\MockObject;
 use PHPUnit\Framework\TestCase;
 use Psr\Log\LoggerInterface;
@@ -39,7 +40,7 @@ class NotifyNewShortUrlToMercureTest extends TestCase
         );
     }
 
-    /** @test */
+    #[Test]
     public function messageIsLoggedWhenShortUrlIsNotFound(): void
     {
         $this->em->expects($this->once())->method('find')->with(ShortUrl::class, '123')->willReturn(null);
@@ -54,10 +55,10 @@ class NotifyNewShortUrlToMercureTest extends TestCase
         ($this->listener)(new ShortUrlCreated('123'));
     }
 
-    /** @test */
+    #[Test]
     public function expectedNotificationIsPublished(): void
     {
-        $shortUrl = ShortUrl::withLongUrl('');
+        $shortUrl = ShortUrl::withLongUrl('https://longUrl');
         $update = Update::forTopicAndPayload('', []);
 
         $this->em->expects($this->once())->method('find')->with(ShortUrl::class, '123')->willReturn($shortUrl);
@@ -71,10 +72,10 @@ class NotifyNewShortUrlToMercureTest extends TestCase
         ($this->listener)(new ShortUrlCreated('123'));
     }
 
-    /** @test */
+    #[Test]
     public function messageIsPrintedIfPublishingFails(): void
     {
-        $shortUrl = ShortUrl::withLongUrl('');
+        $shortUrl = ShortUrl::withLongUrl('https://longUrl');
         $update = Update::forTopicAndPayload('', []);
         $e = new Exception('Error');
 

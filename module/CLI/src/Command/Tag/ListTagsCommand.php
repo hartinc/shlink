@@ -4,7 +4,6 @@ declare(strict_types=1);
 
 namespace Shlinkio\Shlink\CLI\Command\Tag;
 
-use Shlinkio\Shlink\CLI\Util\ExitCodes;
 use Shlinkio\Shlink\CLI\Util\ShlinkTable;
 use Shlinkio\Shlink\Core\Tag\Model\TagInfo;
 use Shlinkio\Shlink\Core\Tag\Model\TagsParams;
@@ -13,13 +12,13 @@ use Symfony\Component\Console\Command\Command;
 use Symfony\Component\Console\Input\InputInterface;
 use Symfony\Component\Console\Output\OutputInterface;
 
-use function Functional\map;
+use function array_map;
 
 class ListTagsCommand extends Command
 {
-    public const NAME = 'tag:list';
+    public const string NAME = 'tag:list';
 
-    public function __construct(private TagServiceInterface $tagService)
+    public function __construct(private readonly TagServiceInterface $tagService)
     {
         parent::__construct();
     }
@@ -31,10 +30,10 @@ class ListTagsCommand extends Command
             ->setDescription('Lists existing tags.');
     }
 
-    protected function execute(InputInterface $input, OutputInterface $output): ?int
+    protected function execute(InputInterface $input, OutputInterface $output): int
     {
         ShlinkTable::default($output)->render(['Name', 'URLs amount', 'Visits amount'], $this->getTagsRows());
-        return ExitCodes::EXIT_SUCCESS;
+        return self::SUCCESS;
     }
 
     private function getTagsRows(): array
@@ -44,9 +43,9 @@ class ListTagsCommand extends Command
             return [['No tags found', '-', '-']];
         }
 
-        return map(
-            $tags,
-            static fn (TagInfo $tagInfo) => [$tagInfo->tag, $tagInfo->shortUrlsCount, $tagInfo->visitsCount],
+        return array_map(
+            static fn (TagInfo $tagInfo) => [$tagInfo->tag, $tagInfo->shortUrlsCount, $tagInfo->visitsSummary->total],
+            [...$tags],
         );
     }
 }

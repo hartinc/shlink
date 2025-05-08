@@ -5,6 +5,8 @@ declare(strict_types=1);
 namespace ShlinkioTest\Shlink\Core\ShortUrl\Paginator\Adapter;
 
 use Cake\Chronos\Chronos;
+use PHPUnit\Framework\Attributes\DataProvider;
+use PHPUnit\Framework\Attributes\Test;
 use PHPUnit\Framework\MockObject\MockObject;
 use PHPUnit\Framework\TestCase;
 use Shlinkio\Shlink\Core\ShortUrl\Model\ShortUrlsParams;
@@ -12,28 +14,25 @@ use Shlinkio\Shlink\Core\ShortUrl\Model\TagsMode;
 use Shlinkio\Shlink\Core\ShortUrl\Paginator\Adapter\ShortUrlRepositoryAdapter;
 use Shlinkio\Shlink\Core\ShortUrl\Persistence\ShortUrlsCountFiltering;
 use Shlinkio\Shlink\Core\ShortUrl\Persistence\ShortUrlsListFiltering;
-use Shlinkio\Shlink\Core\ShortUrl\Repository\ShortUrlRepositoryInterface;
+use Shlinkio\Shlink\Core\ShortUrl\Repository\ShortUrlListRepositoryInterface;
 use Shlinkio\Shlink\Rest\Entity\ApiKey;
 
 class ShortUrlRepositoryAdapterTest extends TestCase
 {
-    private MockObject & ShortUrlRepositoryInterface $repo;
+    private MockObject & ShortUrlListRepositoryInterface $repo;
 
     protected function setUp(): void
     {
-        $this->repo = $this->createMock(ShortUrlRepositoryInterface::class);
+        $this->repo = $this->createMock(ShortUrlListRepositoryInterface::class);
     }
 
-    /**
-     * @test
-     * @dataProvider provideFilteringArgs
-     */
+    #[Test, DataProvider('provideFilteringArgs')]
     public function getItemsFallsBackToFindList(
-        ?string $searchTerm = null,
+        string|null $searchTerm = null,
         array $tags = [],
-        ?string $startDate = null,
-        ?string $endDate = null,
-        ?string $orderBy = null,
+        string|null $startDate = null,
+        string|null $endDate = null,
+        string|null $orderBy = null,
     ): void {
         $params = ShortUrlsParams::fromRawData([
             'searchTerm' => $searchTerm,
@@ -53,15 +52,12 @@ class ShortUrlRepositoryAdapterTest extends TestCase
         $adapter->getSlice(5, 10);
     }
 
-    /**
-     * @test
-     * @dataProvider provideFilteringArgs
-     */
+    #[Test, DataProvider('provideFilteringArgs')]
     public function countFallsBackToCountList(
-        ?string $searchTerm = null,
+        string|null $searchTerm = null,
         array $tags = [],
-        ?string $startDate = null,
-        ?string $endDate = null,
+        string|null $startDate = null,
+        string|null $endDate = null,
     ): void {
         $params = ShortUrlsParams::fromRawData([
             'searchTerm' => $searchTerm,
@@ -79,7 +75,7 @@ class ShortUrlRepositoryAdapterTest extends TestCase
         $adapter->getNbResults();
     }
 
-    public function provideFilteringArgs(): iterable
+    public static function provideFilteringArgs(): iterable
     {
         yield [];
         yield ['search'];

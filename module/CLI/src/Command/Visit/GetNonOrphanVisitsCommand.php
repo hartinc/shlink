@@ -14,7 +14,7 @@ use Symfony\Component\Console\Input\InputInterface;
 
 class GetNonOrphanVisitsCommand extends AbstractVisitsListCommand
 {
-    public const NAME = 'visit:non-orphan';
+    public const string NAME = 'visit:non-orphan';
 
     public function __construct(
         VisitsStatsHelperInterface $visitsHelper,
@@ -30,6 +30,9 @@ class GetNonOrphanVisitsCommand extends AbstractVisitsListCommand
             ->setDescription('Returns the list of non-orphan visits.');
     }
 
+    /**
+     * @return Paginator<Visit>
+     */
     protected function getVisitsPaginator(InputInterface $input, DateRange $dateRange): Paginator
     {
         return $this->visitsHelper->nonOrphanVisits(new VisitsParams($dateRange));
@@ -40,7 +43,7 @@ class GetNonOrphanVisitsCommand extends AbstractVisitsListCommand
      */
     protected function mapExtraFields(Visit $visit): array
     {
-        $shortUrl = $visit->getShortUrl();
+        $shortUrl = $visit->shortUrl;
         return $shortUrl === null ? [] : ['shortUrl' => $this->shortUrlStringifier->stringify($shortUrl)];
     }
 }

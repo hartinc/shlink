@@ -5,14 +5,13 @@ declare(strict_types=1);
 namespace ShlinkioApiTest\Shlink\Rest\Action;
 
 use GuzzleHttp\RequestOptions;
+use PHPUnit\Framework\Attributes\DataProvider;
+use PHPUnit\Framework\Attributes\Test;
 use Shlinkio\Shlink\TestUtils\ApiTest\ApiTestCase;
 
 class DomainRedirectsTest extends ApiTestCase
 {
-    /**
-     * @test
-     * @dataProvider provideInvalidDomains
-     */
+    #[Test, DataProvider('provideInvalidDomains')]
     public function anErrorIsReturnedWhenTryingToEditAnInvalidDomain(array $request): void
     {
         $resp = $this->callApiWithKey(self::METHOD_PATCH, '/domains/redirects', [
@@ -22,12 +21,12 @@ class DomainRedirectsTest extends ApiTestCase
 
         self::assertEquals(self::STATUS_BAD_REQUEST, $resp->getStatusCode());
         self::assertEquals(self::STATUS_BAD_REQUEST, $payload['status']);
-        self::assertEquals('INVALID_ARGUMENT', $payload['type']);
+        self::assertEquals('https://shlink.io/api/error/invalid-data', $payload['type']);
         self::assertEquals('Provided data is not valid', $payload['detail']);
         self::assertEquals('Invalid data', $payload['title']);
     }
 
-    public function provideInvalidDomains(): iterable
+    public static function provideInvalidDomains(): iterable
     {
         yield 'no domain' => [[]];
         yield 'empty domain' => [['domain' => '']];
@@ -35,10 +34,7 @@ class DomainRedirectsTest extends ApiTestCase
         yield 'invalid domain' => [['domain' => '192.168.1.1']];
     }
 
-    /**
-     * @test
-     * @dataProvider provideRequests
-     */
+    #[Test, DataProvider('provideRequests')]
     public function allowsToEditDomainRedirects(array $request, array $expectedResponse): void
     {
         $resp = $this->callApiWithKey(self::METHOD_PATCH, '/domains/redirects', [
@@ -50,7 +46,7 @@ class DomainRedirectsTest extends ApiTestCase
         self::assertEquals($expectedResponse, $payload);
     }
 
-    public function provideRequests(): iterable
+    public static function provideRequests(): iterable
     {
         yield 'new domain' => [[
             'domain' => 'my-new-domain.com',
@@ -61,7 +57,7 @@ class DomainRedirectsTest extends ApiTestCase
             'invalidShortUrlRedirect' => null,
         ]];
         yield 'default domain' => [[
-            'domain' => 'doma.in',
+            'domain' => 's.test',
             'regular404Redirect' => 'foo-for-default.com',
         ], [
             'baseUrlRedirect' => null,

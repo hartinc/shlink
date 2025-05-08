@@ -7,17 +7,19 @@ namespace ShlinkioTest\Shlink\Core\EventDispatcher\RabbitMq;
 use Doctrine\ORM\EntityManagerInterface;
 use DomainException;
 use Exception;
+use PHPUnit\Framework\Attributes\DataProvider;
+use PHPUnit\Framework\Attributes\Test;
 use PHPUnit\Framework\MockObject\MockObject;
 use PHPUnit\Framework\TestCase;
 use Psr\Log\LoggerInterface;
 use RuntimeException;
 use Shlinkio\Shlink\Common\UpdatePublishing\PublishingHelperInterface;
 use Shlinkio\Shlink\Common\UpdatePublishing\Update;
+use Shlinkio\Shlink\Core\Config\Options\RabbitMqOptions;
 use Shlinkio\Shlink\Core\EventDispatcher\Event\ShortUrlCreated;
 use Shlinkio\Shlink\Core\EventDispatcher\PublishingUpdatesGeneratorInterface;
 use Shlinkio\Shlink\Core\EventDispatcher\RabbitMq\NotifyNewShortUrlToRabbitMq;
 use Shlinkio\Shlink\Core\EventDispatcher\Topic;
-use Shlinkio\Shlink\Core\Options\RabbitMqOptions;
 use Shlinkio\Shlink\Core\ShortUrl\Entity\ShortUrl;
 use Throwable;
 
@@ -36,7 +38,7 @@ class NotifyNewShortUrlToRabbitMqTest extends TestCase
         $this->logger = $this->createMock(LoggerInterface::class);
     }
 
-    /** @test */
+    #[Test]
     public function doesNothingWhenTheFeatureIsNotEnabled(): void
     {
         $this->helper->expects($this->never())->method('publishUpdate');
@@ -47,7 +49,7 @@ class NotifyNewShortUrlToRabbitMqTest extends TestCase
         ($this->listener(false))(new ShortUrlCreated('123'));
     }
 
-    /** @test */
+    #[Test]
     public function notificationsAreNotSentWhenShortUrlCannotBeFound(): void
     {
         $shortUrlId = '123';
@@ -62,13 +64,13 @@ class NotifyNewShortUrlToRabbitMqTest extends TestCase
         ($this->listener())(new ShortUrlCreated($shortUrlId));
     }
 
-    /** @test */
+    #[Test]
     public function expectedChannelIsNotified(): void
     {
         $shortUrlId = '123';
         $update = Update::forTopicAndPayload(Topic::NEW_SHORT_URL->value, []);
         $this->em->expects($this->once())->method('find')->with(ShortUrl::class, $shortUrlId)->willReturn(
-            ShortUrl::withLongUrl(''),
+            ShortUrl::withLongUrl('https://longUrl'),
         );
         $this->updatesGenerator->expects($this->once())->method('newShortUrlUpdate')->with(
             $this->isInstanceOf(ShortUrl::class),
@@ -79,16 +81,13 @@ class NotifyNewShortUrlToRabbitMqTest extends TestCase
         ($this->listener())(new ShortUrlCreated($shortUrlId));
     }
 
-    /**
-     * @test
-     * @dataProvider provideExceptions
-     */
+    #[Test, DataProvider('provideExceptions')]
     public function printsDebugMessageInCaseOfError(Throwable $e): void
     {
         $shortUrlId = '123';
         $update = Update::forTopicAndPayload(Topic::NEW_SHORT_URL->value, []);
         $this->em->expects($this->once())->method('find')->with(ShortUrl::class, $shortUrlId)->willReturn(
-            ShortUrl::withLongUrl(''),
+            ShortUrl::withLongUrl('https://longUrl'),
         );
         $this->updatesGenerator->expects($this->once())->method('newShortUrlUpdate')->with(
             $this->isInstanceOf(ShortUrl::class),
@@ -102,7 +101,7 @@ class NotifyNewShortUrlToRabbitMqTest extends TestCase
         ($this->listener())(new ShortUrlCreated($shortUrlId));
     }
 
-    public function provideExceptions(): iterable
+    public static function provideExceptions(): iterable
     {
         yield [new RuntimeException('RuntimeException Error')];
         yield [new Exception('Exception Error')];

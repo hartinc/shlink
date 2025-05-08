@@ -4,9 +4,8 @@ declare(strict_types=1);
 
 namespace Shlinkio\Shlink\CLI\Command\Visit;
 
-use Shlinkio\Shlink\CLI\Option\EndDateOption;
-use Shlinkio\Shlink\CLI\Option\StartDateOption;
-use Shlinkio\Shlink\CLI\Util\ExitCodes;
+use Shlinkio\Shlink\CLI\Input\EndDateOption;
+use Shlinkio\Shlink\CLI\Input\StartDateOption;
 use Shlinkio\Shlink\CLI\Util\ShlinkTable;
 use Shlinkio\Shlink\Common\Paginator\Paginator;
 use Shlinkio\Shlink\Common\Util\DateRange;
@@ -17,9 +16,9 @@ use Symfony\Component\Console\Input\InputInterface;
 use Symfony\Component\Console\Output\OutputInterface;
 
 use function array_keys;
-use function Functional\map;
-use function Functional\select_keys;
+use function array_map;
 use function Shlinkio\Shlink\Common\buildDateRange;
+use function Shlinkio\Shlink\Core\ArrayUtils\select_keys;
 use function Shlinkio\Shlink\Core\camelCaseToHumanFriendly;
 
 abstract class AbstractVisitsListCommand extends Command
@@ -34,7 +33,7 @@ abstract class AbstractVisitsListCommand extends Command
         $this->endDateOption = new EndDateOption($this, 'visits');
     }
 
-    final protected function execute(InputInterface $input, OutputInterface $output): ?int
+    final protected function execute(InputInterface $input, OutputInterface $output): int
     {
         $startDate = $this->startDateOption->get($input, $output);
         $endDate = $this->endDateOption->get($input, $output);
@@ -43,26 +42,33 @@ abstract class AbstractVisitsListCommand extends Command
 
         ShlinkTable::default($output)->render($headers, $rows);
 
-        return ExitCodes::EXIT_SUCCESS;
+        return self::SUCCESS;
     }
 
+    /**
+     * @param Paginator<Visit> $paginator
+     */
     private function resolveRowsAndHeaders(Paginator $paginator): array
     {
         $extraKeys = [];
-        $rows = map($paginator->getCurrentPageResults(), function (Visit $visit) use (&$extraKeys) {
+        $rows = array_map(function (Visit $visit) use (&$extraKeys) {
             $extraFields = $this->mapExtraFields($visit);
             $extraKeys = array_keys($extraFields);
 
             $rowData = [
-                ...$visit->jsonSerialize(),
-                'country' => $visit->getVisitLocation()?->getCountryName() ?? 'Unknown',
-                'city' => $visit->getVisitLocation()?->getCityName() ?? 'Unknown',
+                'referer' => $visit->referer,
+                'date' => $visit->date->toAtomString(),
+                'userAgent' => $visit->userAgent,
+                'potentialBot' => $visit->potentialBot,
+                'country' => $visit->getVisitLocation()->countryName ?? 'Unknown',
+                'city' => $visit->getVisitLocation()->cityName ?? 'Unknown',
                 ...$extraFields,
             ];
 
+            // Filter out unknown keys
             return select_keys($rowData, ['referer', 'date', 'userAgent', 'country', 'city', ...$extraKeys]);
-        });
-        $extra = map($extraKeys, camelCaseToHumanFriendly(...));
+        }, [...$paginator->getCurrentPageResults()]);
+        $extra = array_map(camelCaseToHumanFriendly(...), $extraKeys);
 
         return [
             $rows,
@@ -70,6 +76,9 @@ abstract class AbstractVisitsListCommand extends Command
         ];
     }
 
+    /**
+     * @return Paginator<Visit>
+     */
     abstract protected function getVisitsPaginator(InputInterface $input, DateRange $dateRange): Paginator;
 
     /**

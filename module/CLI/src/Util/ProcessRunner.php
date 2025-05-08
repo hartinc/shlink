@@ -20,11 +20,11 @@ class ProcessRunner implements ProcessRunnerInterface
 {
     private Closure $createProcess;
 
-    public function __construct(private ProcessHelper $helper, ?callable $createProcess = null)
+    public function __construct(private ProcessHelper $helper, callable|null $createProcess = null)
     {
         $this->createProcess = $createProcess !== null
-            ? Closure::fromCallable($createProcess)
-            : static fn (array $cmd) => new Process($cmd, null, null, null, LockedCommandConfig::DEFAULT_TTL);
+            ? $createProcess(...)
+            : static fn (array $cmd) => new Process($cmd, timeout: LockedCommandConfig::DEFAULT_TTL);
     }
 
     public function run(OutputInterface $output, array $cmd): void

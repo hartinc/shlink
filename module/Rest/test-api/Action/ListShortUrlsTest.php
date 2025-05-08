@@ -6,18 +6,25 @@ namespace ShlinkioApiTest\Shlink\Rest\Action;
 
 use Cake\Chronos\Chronos;
 use GuzzleHttp\RequestOptions;
+use PHPUnit\Framework\Attributes\DataProvider;
+use PHPUnit\Framework\Attributes\Test;
+use Shlinkio\Shlink\Core\Domain\Entity\Domain;
 use Shlinkio\Shlink\TestUtils\ApiTest\ApiTestCase;
 
 use function count;
 
 class ListShortUrlsTest extends ApiTestCase
 {
-    private const SHORT_URL_SHLINK_WITH_TITLE = [
+    private const array SHORT_URL_SHLINK_WITH_TITLE = [
         'shortCode' => 'abc123',
-        'shortUrl' => 'http://doma.in/abc123',
+        'shortUrl' => 'http://s.test/abc123',
         'longUrl' => 'https://shlink.io',
         'dateCreated' => '2018-05-01T00:00:00+00:00',
-        'visitsCount' => 3,
+        'visitsSummary' => [
+            'total' => 3,
+            'nonBots' => 3,
+            'bots' => 0,
+        ],
         'tags' => ['foo'],
         'meta' => [
             'validSince' => null,
@@ -28,13 +35,18 @@ class ListShortUrlsTest extends ApiTestCase
         'title' => 'My cool title',
         'crawlable' => true,
         'forwardQuery' => true,
+        'hasRedirectRules' => false,
     ];
-    private const SHORT_URL_DOCS = [
+    private const array SHORT_URL_DOCS = [
         'shortCode' => 'ghi789',
-        'shortUrl' => 'http://doma.in/ghi789',
+        'shortUrl' => 'http://s.test/ghi789',
         'longUrl' => 'https://shlink.io/documentation/',
         'dateCreated' => '2018-05-01T00:00:00+00:00',
-        'visitsCount' => 2,
+        'visitsSummary' => [
+            'total' => 2,
+            'nonBots' => 2,
+            'bots' => 0,
+        ],
         'tags' => [],
         'meta' => [
             'validSince' => null,
@@ -45,13 +57,18 @@ class ListShortUrlsTest extends ApiTestCase
         'title' => null,
         'crawlable' => false,
         'forwardQuery' => true,
+        'hasRedirectRules' => false,
     ];
-    private const SHORT_URL_CUSTOM_SLUG_AND_DOMAIN = [
+    private const array SHORT_URL_CUSTOM_SLUG_AND_DOMAIN = [
         'shortCode' => 'custom-with-domain',
         'shortUrl' => 'http://some-domain.com/custom-with-domain',
         'longUrl' => 'https://google.com',
         'dateCreated' => '2018-10-20T00:00:00+00:00',
-        'visitsCount' => 0,
+        'visitsSummary' => [
+            'total' => 0,
+            'nonBots' => 0,
+            'bots' => 0,
+        ],
         'tags' => [],
         'meta' => [
             'validSince' => null,
@@ -62,15 +79,20 @@ class ListShortUrlsTest extends ApiTestCase
         'title' => null,
         'crawlable' => false,
         'forwardQuery' => true,
+        'hasRedirectRules' => false,
     ];
-    private const SHORT_URL_META = [
+    private const array SHORT_URL_META = [
         'shortCode' => 'def456',
-        'shortUrl' => 'http://doma.in/def456',
+        'shortUrl' => 'http://s.test/def456',
         'longUrl' =>
             'https://blog.alejandrocelaya.com/2017/12/09'
             . '/acmailer-7-0-the-most-important-release-in-a-long-time/',
         'dateCreated' => '2019-01-01T00:00:10+00:00',
-        'visitsCount' => 2,
+        'visitsSummary' => [
+            'total' => 2,
+            'nonBots' => 1,
+            'bots' => 1,
+        ],
         'tags' => ['bar', 'foo'],
         'meta' => [
             'validSince' => '2020-05-01T00:00:00+00:00',
@@ -81,13 +103,18 @@ class ListShortUrlsTest extends ApiTestCase
         'title' => null,
         'crawlable' => false,
         'forwardQuery' => true,
+        'hasRedirectRules' => true,
     ];
-    private const SHORT_URL_CUSTOM_SLUG = [
+    private const array SHORT_URL_CUSTOM_SLUG = [
         'shortCode' => 'custom',
-        'shortUrl' => 'http://doma.in/custom',
+        'shortUrl' => 'http://s.test/custom',
         'longUrl' => 'https://shlink.io',
         'dateCreated' => '2019-01-01T00:00:20+00:00',
-        'visitsCount' => 0,
+        'visitsSummary' => [
+            'total' => 0,
+            'nonBots' => 0,
+            'bots' => 0,
+        ],
         'tags' => [],
         'meta' => [
             'validSince' => null,
@@ -96,17 +123,22 @@ class ListShortUrlsTest extends ApiTestCase
         ],
         'domain' => null,
         'title' => null,
-        'crawlable' => false,
+        'crawlable' => true,
         'forwardQuery' => false,
+        'hasRedirectRules' => false,
     ];
-    private const SHORT_URL_CUSTOM_DOMAIN = [
+    private const array SHORT_URL_CUSTOM_DOMAIN = [
         'shortCode' => 'ghi789',
         'shortUrl' => 'http://example.com/ghi789',
         'longUrl' =>
             'https://blog.alejandrocelaya.com/2019/04/27'
             . '/considerations-to-properly-use-open-source-software-projects/',
         'dateCreated' => '2019-01-01T00:00:30+00:00',
-        'visitsCount' => 0,
+        'visitsSummary' => [
+            'total' => 0,
+            'nonBots' => 0,
+            'bots' => 0,
+        ],
         'tags' => ['foo'],
         'meta' => [
             'validSince' => null,
@@ -117,12 +149,10 @@ class ListShortUrlsTest extends ApiTestCase
         'title' => null,
         'crawlable' => false,
         'forwardQuery' => true,
+        'hasRedirectRules' => false,
     ];
 
-    /**
-     * @test
-     * @dataProvider provideFilteredLists
-     */
+    #[Test, DataProvider('provideFilteredLists')]
     public function shortUrlsAreProperlyListed(array $query, array $expectedShortUrls, string $apiKey): void
     {
         $resp = $this->callApiWithKey(self::METHOD_GET, '/short-urls', [RequestOptions::QUERY => $query], $apiKey);
@@ -137,7 +167,7 @@ class ListShortUrlsTest extends ApiTestCase
         ], $respPayload);
     }
 
-    public function provideFilteredLists(): iterable
+    public static function provideFilteredLists(): iterable
     {
         yield [[], [
             self::SHORT_URL_CUSTOM_DOMAIN,
@@ -178,12 +208,12 @@ class ListShortUrlsTest extends ApiTestCase
             self::SHORT_URL_SHLINK_WITH_TITLE,
         ], 'valid_api_key'];
         yield [['orderBy' => 'title-DESC'], [
+            self::SHORT_URL_SHLINK_WITH_TITLE,
             self::SHORT_URL_META,
             self::SHORT_URL_CUSTOM_SLUG,
             self::SHORT_URL_DOCS,
             self::SHORT_URL_CUSTOM_DOMAIN,
             self::SHORT_URL_CUSTOM_SLUG_AND_DOMAIN,
-            self::SHORT_URL_SHLINK_WITH_TITLE,
         ], 'valid_api_key'];
         yield [['startDate' => Chronos::parse('2018-12-01')->toAtomString()], [
             self::SHORT_URL_CUSTOM_DOMAIN,
@@ -235,6 +265,15 @@ class ListShortUrlsTest extends ApiTestCase
         yield [['searchTerm' => 'example.com'], [
             self::SHORT_URL_CUSTOM_DOMAIN,
         ], 'valid_api_key'];
+        yield [['domain' => 'example.com'], [
+            self::SHORT_URL_CUSTOM_DOMAIN,
+        ], 'valid_api_key'];
+        yield [['domain' => Domain::DEFAULT_AUTHORITY], [
+            self::SHORT_URL_CUSTOM_SLUG,
+            self::SHORT_URL_META,
+            self::SHORT_URL_SHLINK_WITH_TITLE,
+            self::SHORT_URL_DOCS,
+        ], 'valid_api_key'];
         yield [[], [
             self::SHORT_URL_CUSTOM_SLUG,
             self::SHORT_URL_META,
@@ -256,10 +295,7 @@ class ListShortUrlsTest extends ApiTestCase
         ];
     }
 
-    /**
-     * @test
-     * @dataProvider provideInvalidFiltering
-     */
+    #[Test, DataProvider('provideInvalidFiltering')]
     public function errorIsReturnedWhenProvidingInvalidValues(array $query, array $expectedInvalidElements): void
     {
         $resp = $this->callApiWithKey(self::METHOD_GET, '/short-urls', [RequestOptions::QUERY => $query]);
@@ -269,13 +305,13 @@ class ListShortUrlsTest extends ApiTestCase
         self::assertEquals([
             'invalidElements' => $expectedInvalidElements,
             'title' => 'Invalid data',
-            'type' => 'INVALID_ARGUMENT',
+            'type' => 'https://shlink.io/api/error/invalid-data',
             'status' => 400,
             'detail' => 'Provided data is not valid',
         ], $respPayload);
     }
 
-    public function provideInvalidFiltering(): iterable
+    public static function provideInvalidFiltering(): iterable
     {
         yield [['tagsMode' => 'invalid'], ['tagsMode']];
         yield [['orderBy' => 'invalid'], ['orderBy']];

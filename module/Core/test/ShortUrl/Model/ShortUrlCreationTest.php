@@ -5,10 +5,13 @@ declare(strict_types=1);
 namespace ShlinkioTest\Shlink\Core\ShortUrl\Model;
 
 use Cake\Chronos\Chronos;
+use PHPUnit\Framework\Attributes\DataProvider;
+use PHPUnit\Framework\Attributes\Test;
 use PHPUnit\Framework\TestCase;
-use Shlinkio\Shlink\Core\Config\EnvVars;
+use Shlinkio\Shlink\Core\Config\Options\UrlShortenerOptions;
 use Shlinkio\Shlink\Core\Exception\ValidationException;
 use Shlinkio\Shlink\Core\ShortUrl\Model\ShortUrlCreation;
+use Shlinkio\Shlink\Core\ShortUrl\Model\ShortUrlMode;
 use Shlinkio\Shlink\Core\ShortUrl\Model\Validation\ShortUrlInputFilter;
 use stdClass;
 
@@ -18,102 +21,109 @@ use const STR_PAD_BOTH;
 
 class ShortUrlCreationTest extends TestCase
 {
-    /**
-     * @param array $data
-     * @test
-     * @dataProvider provideInvalidData
-     */
+    #[Test, DataProvider('provideInvalidData')]
     public function exceptionIsThrownIfProvidedDataIsInvalid(array $data): void
     {
         $this->expectException(ValidationException::class);
         ShortUrlCreation::fromRawData($data);
     }
 
-    public function provideInvalidData(): iterable
+    public static function provideInvalidData(): iterable
     {
         yield [[]];
         yield [[
-            ShortUrlInputFilter::LONG_URL => 'foo',
+            ShortUrlInputFilter::LONG_URL => 'https://foo',
             ShortUrlInputFilter::VALID_SINCE => '',
             ShortUrlInputFilter::VALID_UNTIL => '',
             ShortUrlInputFilter::CUSTOM_SLUG => 'foobar',
             ShortUrlInputFilter::MAX_VISITS => 'invalid',
         ]];
         yield [[
-            ShortUrlInputFilter::LONG_URL => 'foo',
+            ShortUrlInputFilter::LONG_URL => 'https://foo',
             ShortUrlInputFilter::VALID_SINCE => '2017',
             ShortUrlInputFilter::MAX_VISITS => 5,
         ]];
         yield [[
-            ShortUrlInputFilter::LONG_URL => 'foo',
+            ShortUrlInputFilter::LONG_URL => 'https://foo',
             ShortUrlInputFilter::VALID_SINCE => new stdClass(),
             ShortUrlInputFilter::VALID_UNTIL => 'foo',
         ]];
         yield [[
-            ShortUrlInputFilter::LONG_URL => 'foo',
+            ShortUrlInputFilter::LONG_URL => 'https://foo',
             ShortUrlInputFilter::VALID_UNTIL => 500,
             ShortUrlInputFilter::DOMAIN => 4,
         ]];
         yield [[
-            ShortUrlInputFilter::LONG_URL => 'foo',
+            ShortUrlInputFilter::LONG_URL => 'https://foo',
             ShortUrlInputFilter::SHORT_CODE_LENGTH => 3,
         ]];
         yield [[
-            ShortUrlInputFilter::LONG_URL => 'foo',
+            ShortUrlInputFilter::LONG_URL => 'https://foo',
             ShortUrlInputFilter::CUSTOM_SLUG => '',
         ]];
         yield [[
-            ShortUrlInputFilter::LONG_URL => 'foo',
+            ShortUrlInputFilter::LONG_URL => 'https://foo',
+            ShortUrlInputFilter::CUSTOM_SLUG => 'foo?some=param',
+        ]];
+        yield [[
+            ShortUrlInputFilter::LONG_URL => 'https://foo',
             ShortUrlInputFilter::CUSTOM_SLUG => '   ',
         ]];
         yield [[
             ShortUrlInputFilter::LONG_URL => [],
         ]];
+        yield [[
+            ShortUrlInputFilter::LONG_URL => null,
+        ]];
+        yield [[
+            ShortUrlInputFilter::LONG_URL => 'missing_schema',
+        ]];
     }
 
-    /**
-     * @test
-     * @dataProvider provideCustomSlugs
-     */
+    #[Test, DataProvider('provideCustomSlugs')]
     public function properlyCreatedInstanceReturnsValues(
         string $customSlug,
         string $expectedSlug,
         bool $multiSegmentEnabled = false,
+        ShortUrlMode $shortUrlMode = ShortUrlMode::STRICT,
     ): void {
-        $meta = ShortUrlCreation::fromRawData([
+        $creation = ShortUrlCreation::fromRawData([
             'validSince' => Chronos::parse('2015-01-01')->toAtomString(),
             'customSlug' => $customSlug,
-            'longUrl' => '',
-            EnvVars::MULTI_SEGMENT_SLUGS_ENABLED->value => $multiSegmentEnabled,
-        ]);
+            'longUrl' => 'https://longUrl',
+        ], new UrlShortenerOptions(multiSegmentSlugsEnabled: $multiSegmentEnabled, mode: $shortUrlMode));
 
-        self::assertTrue($meta->hasValidSince());
-        self::assertEquals(Chronos::parse('2015-01-01'), $meta->getValidSince());
+        self::assertTrue($creation->hasValidSince());
+        self::assertEquals(Chronos::parse('2015-01-01'), $creation->validSince);
 
-        self::assertFalse($meta->hasValidUntil());
-        self::assertNull($meta->getValidUntil());
+        self::assertFalse($creation->hasValidUntil());
+        self::assertNull($creation->validUntil);
 
-        self::assertTrue($meta->hasCustomSlug());
-        self::assertEquals($expectedSlug, $meta->getCustomSlug());
+        self::assertTrue($creation->hasCustomSlug());
+        self::assertEquals($expectedSlug, $creation->customSlug);
 
-        self::assertFalse($meta->hasMaxVisits());
-        self::assertNull($meta->getMaxVisits());
+        self::assertFalse($creation->hasMaxVisits());
+        self::assertNull($creation->maxVisits);
     }
 
-    public function provideCustomSlugs(): iterable
+    public static function provideCustomSlugs(): iterable
     {
         yield ['🔥', '🔥'];
         yield ['🦣 🍅', '🦣-🍅'];
+        yield ['🦣 🍅', '🦣-🍅', false, ShortUrlMode::LOOSE];
         yield ['foobar', 'foobar'];
         yield ['foo bar', 'foo-bar'];
         yield ['foo bar baz', 'foo-bar-baz'];
         yield ['foo bar-baz', 'foo-bar-baz'];
+        yield ['foo BAR-baz', 'foo-bar-baz', false, ShortUrlMode::LOOSE];
         yield ['foo/bar/baz', 'foo/bar/baz', true];
         yield ['/foo/bar/baz', 'foo/bar/baz', true];
+        yield ['/foo/baR/baZ', 'foo/bar/baz', true, ShortUrlMode::LOOSE];
         yield ['foo/bar/baz', 'foo-bar-baz'];
         yield ['/foo/bar/baz', '-foo-bar-baz'];
         yield ['wp-admin.php', 'wp-admin.php'];
         yield ['UPPER_lower', 'UPPER_lower'];
+        yield ['UPPER_lower', 'upper_lower', false, ShortUrlMode::LOOSE];
         yield ['more~url_special.chars', 'more~url_special.chars'];
         yield ['구글', '구글'];
         yield ['グーグル', 'グーグル'];
@@ -121,21 +131,33 @@ class ShortUrlCreationTest extends TestCase
         yield ['гугл', 'гугл'];
     }
 
-    /**
-     * @test
-     * @dataProvider provideTitles
-     */
-    public function titleIsCroppedIfTooLong(?string $title, ?string $expectedTitle): void
+    #[Test, DataProvider('provideValidLongUrls')]
+    public function supportsDifferentTypesOfSchemas(string $longUrl): void
     {
-        $meta = ShortUrlCreation::fromRawData([
-            'title' => $title,
-            'longUrl' => '',
-        ]);
-
-        self::assertEquals($expectedTitle, $meta->getTitle());
+        $creation = ShortUrlCreation::fromRawData(['longUrl' => $longUrl]);
+        self::assertEquals($longUrl, $creation->longUrl);
     }
 
-    public function provideTitles(): iterable
+    public static function provideValidLongUrls(): iterable
+    {
+        yield 'mailto' => ['mailto:foo@example.com'];
+        yield 'file' => ['file:///foo/bar'];
+        yield 'https' => ['https://example.com'];
+        yield 'deeplink' => ['shlink://some/path'];
+    }
+
+    #[Test, DataProvider('provideTitles')]
+    public function titleIsCroppedIfTooLong(string|null $title, string|null $expectedTitle): void
+    {
+        $creation = ShortUrlCreation::fromRawData([
+            'title' => $title,
+            'longUrl' => 'https://longUrl',
+        ]);
+
+        self::assertEquals($expectedTitle, $creation->title);
+    }
+
+    public static function provideTitles(): iterable
     {
         yield [null, null];
         yield ['foo', 'foo'];
@@ -147,25 +169,22 @@ class ShortUrlCreationTest extends TestCase
         yield [str_pad('', 800, 'e'), str_pad('', 512, 'e')];
     }
 
-    /**
-     * @test
-     * @dataProvider provideDomains
-     */
-    public function emptyDomainIsDiscarded(?string $domain, ?string $expectedDomain): void
+    #[Test, DataProvider('provideDomains')]
+    public function emptyDomainIsDiscarded(string|null $domain, string|null $expectedDomain): void
     {
-        $meta = ShortUrlCreation::fromRawData([
+        $creation = ShortUrlCreation::fromRawData([
             'domain' => $domain,
-            'longUrl' => '',
+            'longUrl' => 'https://longUrl',
         ]);
 
-        self::assertSame($expectedDomain, $meta->getDomain());
+        self::assertSame($expectedDomain, $creation->domain);
     }
 
-    public function provideDomains(): iterable
+    public static function provideDomains(): iterable
     {
         yield 'null domain' => [null, null];
         yield 'empty domain' => ['', null];
         yield 'trimmable domain' => ['   ', null];
-        yield 'valid domain' => ['doma.in', 'doma.in'];
+        yield 'valid domain' => ['s.test', 's.test'];
     }
 }

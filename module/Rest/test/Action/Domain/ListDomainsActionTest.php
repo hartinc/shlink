@@ -6,13 +6,14 @@ namespace ShlinkioTest\Shlink\Rest\Action\Domain;
 
 use Laminas\Diactoros\Response\JsonResponse;
 use Laminas\Diactoros\ServerRequestFactory;
+use PHPUnit\Framework\Attributes\Test;
 use PHPUnit\Framework\MockObject\MockObject;
 use PHPUnit\Framework\TestCase;
 use Shlinkio\Shlink\Core\Config\NotFoundRedirects;
+use Shlinkio\Shlink\Core\Config\Options\NotFoundRedirectOptions;
 use Shlinkio\Shlink\Core\Domain\DomainServiceInterface;
 use Shlinkio\Shlink\Core\Domain\Entity\Domain;
 use Shlinkio\Shlink\Core\Domain\Model\DomainItem;
-use Shlinkio\Shlink\Core\Options\NotFoundRedirectOptions;
 use Shlinkio\Shlink\Rest\Action\Domain\ListDomainsAction;
 use Shlinkio\Shlink\Rest\Entity\ApiKey;
 
@@ -29,7 +30,7 @@ class ListDomainsActionTest extends TestCase
         $this->action = new ListDomainsAction($this->domainService, $this->options);
     }
 
-    /** @test */
+    #[Test]
     public function domainsAreProperlyListed(): void
     {
         $apiKey = ApiKey::create();

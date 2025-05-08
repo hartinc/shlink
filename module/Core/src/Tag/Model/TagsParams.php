@@ -12,12 +12,10 @@ use function Shlinkio\Shlink\Common\parseOrderBy;
 final class TagsParams extends AbstractInfinitePaginableListParams
 {
     private function __construct(
-        public readonly ?string $searchTerm,
+        public readonly string|null $searchTerm,
         public readonly Ordering $orderBy,
-        /** @deprecated */
-        public readonly bool $withStats,
-        ?int $page,
-        ?int $itemsPerPage,
+        int|null $page,
+        int|null $itemsPerPage,
     ) {
         parent::__construct($page, $itemsPerPage);
     }
@@ -26,8 +24,7 @@ final class TagsParams extends AbstractInfinitePaginableListParams
     {
         return new self(
             $query['searchTerm'] ?? null,
-            Ordering::fromTuple(isset($query['orderBy']) ? parseOrderBy($query['orderBy']) : [null, null]),
-            ($query['withStats'] ?? null) === 'true',
+            isset($query['orderBy']) ? Ordering::fromTuple(parseOrderBy($query['orderBy'])) : Ordering::none(),
             isset($query['page']) ? (int) $query['page'] : null,
             isset($query['itemsPerPage']) ? (int) $query['itemsPerPage'] : null,
         );

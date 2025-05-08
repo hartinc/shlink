@@ -7,21 +7,21 @@ namespace Shlinkio\Shlink\Rest\Action\ShortUrl;
 use Laminas\Diactoros\Response\JsonResponse;
 use Psr\Http\Message\ResponseInterface;
 use Psr\Http\Message\ServerRequestInterface;
-use Shlinkio\Shlink\Common\Rest\DataTransformerInterface;
 use Shlinkio\Shlink\Core\ShortUrl\Model\ShortUrlEdition;
 use Shlinkio\Shlink\Core\ShortUrl\Model\ShortUrlIdentifier;
 use Shlinkio\Shlink\Core\ShortUrl\ShortUrlServiceInterface;
+use Shlinkio\Shlink\Core\ShortUrl\Transformer\ShortUrlDataTransformerInterface;
 use Shlinkio\Shlink\Rest\Action\AbstractRestAction;
 use Shlinkio\Shlink\Rest\Middleware\AuthenticationMiddleware;
 
 class EditShortUrlAction extends AbstractRestAction
 {
-    protected const ROUTE_PATH = '/short-urls/{shortCode}';
-    protected const ROUTE_ALLOWED_METHODS = [self::METHOD_PATCH];
+    protected const string ROUTE_PATH = '/short-urls/{shortCode}';
+    protected const array ROUTE_ALLOWED_METHODS = [self::METHOD_PATCH];
 
     public function __construct(
-        private ShortUrlServiceInterface $shortUrlService,
-        private DataTransformerInterface $transformer,
+        private readonly ShortUrlServiceInterface $shortUrlService,
+        private readonly ShortUrlDataTransformerInterface $transformer,
     ) {
     }
 

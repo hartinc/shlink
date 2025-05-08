@@ -4,13 +4,15 @@ declare(strict_types=1);
 
 namespace ShlinkioDbTest\Shlink\Core\Tag\Paginator\Adapter;
 
+use PHPUnit\Framework\Attributes\DataProvider;
+use PHPUnit\Framework\Attributes\Test;
 use Shlinkio\Shlink\Core\Tag\Entity\Tag;
 use Shlinkio\Shlink\Core\Tag\Model\TagsParams;
 use Shlinkio\Shlink\Core\Tag\Paginator\Adapter\TagsPaginatorAdapter;
 use Shlinkio\Shlink\Core\Tag\Repository\TagRepository;
 use Shlinkio\Shlink\TestUtils\DbTest\DatabaseTestCase;
 
-use function Functional\map;
+use function array_map;
 
 class TagsPaginatorAdapterTest extends DatabaseTestCase
 {
@@ -24,12 +26,11 @@ class TagsPaginatorAdapterTest extends DatabaseTestCase
     /**
      * @param int<0, max> $offset
      * @param int<0, max> $length
-     * @test
-     * @dataProvider provideFilters
      */
+    #[Test, DataProvider('provideFilters')]
     public function expectedListOfTagsIsReturned(
-        ?string $searchTerm,
-        ?string $orderBy,
+        string|null $searchTerm,
+        string|null $orderBy,
         int $offset,
         int $length,
         array $expectedTags,
@@ -46,13 +47,13 @@ class TagsPaginatorAdapterTest extends DatabaseTestCase
             'orderBy' => $orderBy,
         ]), null);
 
-        $tagNames = map($adapter->getSlice($offset, $length), static fn (Tag $tag) => $tag->__toString());
+        $tagNames = array_map(static fn (Tag $tag) => $tag->__toString(), [...$adapter->getSlice($offset, $length)]);
 
         self::assertEquals($expectedTags, $tagNames);
         self::assertEquals($expectedTotalCount, $adapter->getNbResults());
     }
 
-    public function provideFilters(): iterable
+    public static function provideFilters(): iterable
     {
         yield [null, null, 0, 10, ['another', 'bar', 'baz', 'foo'], 4];
         yield [null, null, 2, 10, ['baz', 'foo'], 4];

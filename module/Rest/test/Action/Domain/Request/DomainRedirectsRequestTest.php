@@ -4,41 +4,37 @@ declare(strict_types=1);
 
 namespace ShlinkioTest\Shlink\Rest\Action\Domain\Request;
 
+use PHPUnit\Framework\Attributes\DataProvider;
+use PHPUnit\Framework\Attributes\Test;
 use PHPUnit\Framework\TestCase;
 use Shlinkio\Shlink\Core\Config\NotFoundRedirectConfigInterface;
+use Shlinkio\Shlink\Core\Config\Options\NotFoundRedirectOptions;
 use Shlinkio\Shlink\Core\Exception\ValidationException;
-use Shlinkio\Shlink\Core\Options\NotFoundRedirectOptions;
 use Shlinkio\Shlink\Rest\Action\Domain\Request\DomainRedirectsRequest;
 
 class DomainRedirectsRequestTest extends TestCase
 {
-    /**
-     * @test
-     * @dataProvider provideInvalidData
-     */
+    #[Test, DataProvider('provideInvalidData')]
     public function throwsExceptionWhenCreatingWithInvalidData(array $data): void
     {
         $this->expectException(ValidationException::class);
         DomainRedirectsRequest::fromRawData($data);
     }
 
-    public function provideInvalidData(): iterable
+    public static function provideInvalidData(): iterable
     {
         yield 'missing domain' => [[]];
         yield 'invalid domain' => [['domain' => 'foo:bar:baz']];
     }
 
-    /**
-     * @test
-     * @dataProvider provideValidData
-     */
+    #[Test, DataProvider('provideValidData')]
     public function isProperlyCastToNotFoundRedirects(
         array $data,
-        ?NotFoundRedirectConfigInterface $defaults,
+        NotFoundRedirectConfigInterface|null $defaults,
         string $expectedAuthority,
-        ?string $expectedBaseUrlRedirect,
-        ?string $expectedRegular404Redirect,
-        ?string $expectedInvalidShortUrlRedirect,
+        string|null $expectedBaseUrlRedirect,
+        string|null $expectedRegular404Redirect,
+        string|null $expectedInvalidShortUrlRedirect,
     ): void {
         $request = DomainRedirectsRequest::fromRawData($data);
         $notFound = $request->toNotFoundRedirects($defaults);
@@ -49,7 +45,7 @@ class DomainRedirectsRequestTest extends TestCase
         self::assertEquals($expectedInvalidShortUrlRedirect, $notFound->invalidShortUrlRedirect);
     }
 
-    public function provideValidData(): iterable
+    public static function provideValidData(): iterable
     {
         yield 'no values' => [['domain' => 'foo'], null, 'foo', null, null, null];
         yield 'some values' => [['domain' => 'foo', 'regular404Redirect' => 'bar'], null, 'foo', null, 'bar', null];

@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace ShlinkioTest\Shlink\Rest\Action\ShortUrl;
 
 use Laminas\Diactoros\ServerRequest;
+use PHPUnit\Framework\Attributes\Test;
 use PHPUnit\Framework\MockObject\MockObject;
 use PHPUnit\Framework\TestCase;
 use Shlinkio\Shlink\Core\Exception\ValidationException;
@@ -24,11 +25,11 @@ class EditShortUrlActionTest extends TestCase
     {
         $this->shortUrlService = $this->createMock(ShortUrlServiceInterface::class);
         $this->action = new EditShortUrlAction($this->shortUrlService, new ShortUrlDataTransformer(
-            new ShortUrlStringifier([]),
+            new ShortUrlStringifier(),
         ));
     }
 
-    /** @test */
+    #[Test]
     public function invalidDataThrowsError(): void
     {
         $request = (new ServerRequest())->withParsedBody([
@@ -41,7 +42,7 @@ class EditShortUrlActionTest extends TestCase
         $this->action->handle($request);
     }
 
-    /** @test */
+    #[Test]
     public function correctShortCodeReturnsSuccess(): void
     {
         $request = (new ServerRequest())->withAttribute('shortCode', 'abc123')
@@ -49,7 +50,7 @@ class EditShortUrlActionTest extends TestCase
                                         ->withParsedBody([
                                             'maxVisits' => 5,
                                         ]);
-        $this->shortUrlService->expects($this->once())->method('updateShortUrl')->willReturn(ShortUrl::createEmpty());
+        $this->shortUrlService->expects($this->once())->method('updateShortUrl')->willReturn(ShortUrl::createFake());
 
         $resp = $this->action->handle($request);
 
