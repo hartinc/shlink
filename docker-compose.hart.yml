@@ -1,0 +1,46 @@
+services:
+  shlink:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: shlink:local
+    container_name: shlink
+    environment:
+      - SHLINK_VERSION=${SHLINK_VERSION:-latest}
+      - SHLINK_RUNTIME=${SHLINK_RUNTIME:-rr}
+      - DB_DRIVER=mysql
+      - DB_USER=shlink
+      - DB_PASSWORD=shlink
+      - DB_HOST=db
+      - DB_NAME=shlink
+      - DEFAULT_DOMAIN=localhost
+      - IS_HTTPS_ENABLED=false
+      - SHELL_VERBOSITY=3
+      - ADDRESS=[::]
+    ports:
+      - "8080:8080"
+      - "8000:8000"
+    depends_on:
+      - db
+    volumes:
+      - ./data:/etc/shlink/data
+      - ./config:/etc/shlink/config
+    restart: unless-stopped
+
+  db:
+    image: mysql:8.0
+    container_name: shlink-db
+    environment:
+      - MYSQL_DATABASE=shlink
+      - MYSQL_USER=shlink
+      - MYSQL_PASSWORD=shlink
+      - MYSQL_ROOT_PASSWORD=root
+    ports:
+      - "3306:3306"
+    volumes:
+      - db_data:/var/lib/mysql
+    restart: unless-stopped
+
+volumes:
+  db_data:
+    driver: local
